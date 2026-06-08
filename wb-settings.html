@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设置 - WB 销售日报 🦊</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-secondary: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  padding: 20px;
+}
+.container { max-width: 800px; margin: 0 auto; }
+.header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 24px;
+}
+.header h1 { font-size: 22px; display: flex; align-items: center; gap: 8px; }
+.header a {
+  color: var(--accent); text-decoration: none; font-size: 14px;
+  padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px;
+  transition: all 0.2s;
+}
+.header a:hover { border-color: var(--accent); }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 20px; margin-bottom: 16px;
+}
+.card h3 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
+.card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  background: #1c2128; padding: 10px 8px; text-align: left;
+  color: var(--text-secondary); border-bottom: 2px solid var(--border);
+  font-weight: 600;
+}
+td { padding: 8px; border-bottom: 1px solid #21262d; vertical-align: middle; }
+td:first-child { font-size: 12px; color: var(--text-secondary); word-break: break-all; }
+td input {
+  width: 100%; padding: 8px 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); font-size: 13px;
+}
+td input:focus { border-color: var(--accent); outline: none; }
+
+.btn {
+  padding: 8px 20px; border: none; border-radius: 6px;
+  font-size: 14px; cursor: pointer; font-weight: 500; transition: all 0.2s;
+}
+.btn-primary { background: #238636; color: white; }
+.btn-primary:hover { background: #2ea043; }
+.btn-outline {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); margin-right: 8px;
+}
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+.actions { margin-top: 16px; text-align: right; }
+.tip {
+  background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--accent);
+  margin-bottom: 16px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>⚙️ 设置</h1>
+    <a href="wb-dashboard.html">← 返回看板</a>
+  </div>
+
+  <div class="tip">💡 设置商品中文名称后，在看板中会优先显示中文名，留空则显示默认英文名。数据存储在服务器，所有用户共享。</div>
+
+  <div class="card">
+    <h3>📋 产品名称映射</h3>
+    <p>请先在看板页面加载数据后再来设置，商品列表将自动同步。</p>
+    <div id="mappingContainer"><p style="color:var(--text-secondary)">请先打开主看板加载数据...</p></div>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="saveMappings()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var products = [];
+var mappings = {};
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/[&<>"']/g, function(m) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+  });
+}
+
+function fetchMappings() {
+  return fetch('/api/mappings').then(function(r) { return r.json(); });
+}
+
+function fetchProducts() {
+  // Try localStorage first, then fallback to API
+  var stored = [];
+  try {
+    var raw = localStorage.getItem('wb_product_list');
+    if (raw) stored = JSON.parse(raw);
+  } catch(e) {}
+  return Promise.resolve(stored);
+}
+
+function renderMappings() {
+  var container = document.getElementById('mappingContainer');
+  
+  Promise.all([fetchMappings(), fetchProducts()]).then(function(results) {
+    mappings = results[0] || {};
+    products = results[1] || [];
+
+    var codes = [...new Set(products.map(function(p) { return p.vendorCode; }).filter(Boolean))];
+    
+    if (codes.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-secondary);font-size:13px">暂无商品数据。请先打开<a href="wb-dashboard.html" style="color:var(--accent)">主看板</a>加载数据后，再回来设置。</p>';
+      return;
+    }
+
+    var html = '<table><thead><tr><th>英文名称</th><th>中文名称</th></tr></thead><tbody>';
+    codes.forEach(function(code) {
+      html += '<tr>' +
+        '<td>' + escapeHtml(code) + '</td>' +
+        '<td><input type="text" class="mapping-input" data-code="' + escapeHtml(code) + '" value="' + escapeHtml(mappings[code] || '') + '" placeholder="输入中文名称"></td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>' +
+      '<p style="font-size:12px;color:var(--text-secondary);margin-top:8px">共 ' + codes.length + ' 个商品</p>';
+    container.innerHTML = html;
+  }).catch(function(err) {
+    container.innerHTML = '<p style="color:var(--red);font-size:13px">加载失败: ' + err.message + '</p>';
+  });
+}
+
+function saveMappings() {
+  var inputs = document.querySelectorAll('.mapping-input');
+  var newMappings = {};
+  inputs.forEach(function(inp) {
+    var val = inp.value.trim();
+    if (val) newMappings[inp.dataset.code] = val;
+  });
+  
+  fetch('/api/mappings', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(newMappings)
+  }).then(function(r) { return r.json(); }).then(function(result) {
+    if (result.status === 'ok') {
+      alert('✅ 已保存，所有用户刷新后可见');
+    } else {
+      alert('❌ 保存失败: ' + (result.error || '未知错误'));
+    }
+  }).catch(function(err) {
+    alert('❌ 保存失败: ' + err.message);
+  });
+}
+
+renderMappings();
+</script>
+</body>
+</html>
