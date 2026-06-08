@@ -328,7 +328,9 @@ tr:hover td { background: #1c2128; }
 
   <!-- Ad Campaign Detail -->
   <div class="table-section" id="adCampaignSection" style="display:none">
-    <h3>📢 广告活动明细</h3>
+    <h3>📢 广告活动明细
+      <button class="btn btn-outline" onclick="downloadAdExcel()" style="font-size:12px;padding:4px 12px">📥 下载Excel</button>
+    </h3>
     <div id="adCampaignTable"></div>
   </div>
 
@@ -802,7 +804,35 @@ function renderAdCampaigns() {
   document.getElementById('adCampaignTable').innerHTML = html;
 }
 
-
+// ====== Download Ad Campaign CSV ======
+function downloadAdExcel() {
+  if (!reportData || !reportData.adCampaigns || reportData.adCampaigns.length === 0) {
+    alert('暂无数据可下载');
+    return;
+  }
+  var campaigns = reportData.adCampaigns.filter(function(c) { return c.cost > 0 || c.orders > 0; });
+  var BOM = '\uFEFF';
+  var csv = BOM + '活动名称,花费(₽),广告订单,关联商品\n';
+  campaigns.forEach(function(c) {
+    var name = (c.name || '广告#' + c.advertId).replace(/,/g, '，');
+    var products = (c.products || []).slice(0, 5).join('; ').replace(/,/g, '，');
+    csv += name + ',' + c.cost + ',' + c.orders + ',' + products + '\n';
+  });
+  csv += '\n\n商品明细\n';
+  csv += '商品名称,订单,销售额(₽),广告费(₽),广告占比,展示量,广告曝光量,广告点击,加购\n';
+  reportData.products.forEach(function(p) {
+    var cname = (getNameMapping(p.vendorCode) || p.vendorCode).replace(/,/g, '，');
+    csv += cname + ',' + p.orders + ',' + p.amount + ',' + p.adCost + ',' + p.adRatio + '%' + ',' + p.views + ',' + p.adViews + ',' + p.adClicks + ',' + p.carts + '\n';
+  });
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'wb_ad_report_' + (reportData.reportDate || 'report').replace(/ ~ /g, '_') + '.csv';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+}
 
 // ====== Name Mapping (shared from server) ======
 let nameMappings = {};

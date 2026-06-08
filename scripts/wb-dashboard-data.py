@@ -273,6 +273,7 @@ def merge_data(products, nm_stats, nm_to_ads, all_adverts, start_date, end_date)
         ad_cost = 0
         ad_orders = 0
         ad_clicks = 0
+        ad_views = 0
         ad_details = []
         active_campaigns = []
 
@@ -281,6 +282,7 @@ def merge_data(products, nm_stats, nm_to_ads, all_adverts, start_date, end_date)
             ad_cost = ns['cost']
             ad_orders = ns['orders']
             ad_clicks = ns['clicks']
+            ad_views = ns['views']
             for a in ns.get('adverts', []):
                 ad_details.append({
                     'advertId': a['advertId'],
@@ -322,6 +324,7 @@ def merge_data(products, nm_stats, nm_to_ads, all_adverts, start_date, end_date)
             'adCost': round(ad_cost, 2),
             'adOrders': ad_orders,
             'adClicks': ad_clicks,
+            'adViews': ad_views,
             'adRatio': ad_ratio,
             'adBuyoutRatio': ad_buyout_ratio,
             'profit': round(profit, 2),
