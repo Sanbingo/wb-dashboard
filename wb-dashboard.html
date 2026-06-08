@@ -10,18 +10,18 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
 :root {
-  --bg: #0d1117;
-  --surface: #161b22;
-  --border: #30363d;
-  --text: #e6edf3;
-  --text-secondary: #8b949e;
-  --text-muted: #484f58;
-  --accent: #58a6ff;
-  --green: #3fb950;
-  --orange: #d29922;
-  --red: #f85149;
-  --purple: #bc8cff;
-  --cyan: #39d2c0;
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --border: #e8e8e8;
+  --text: #262626;
+  --text-secondary: #8c8c8c;
+  --text-muted: #bfbfbf;
+  --accent: #1677ff;
+  --green: #52c41a;
+  --orange: #fa8c16;
+  --red: #ff4d4f;
+  --purple: #722ed1;
+  --cyan: #13c2c2;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -81,9 +81,9 @@ body {
   transition: all 0.2s;
   font-weight: 500;
 }
-.btn-primary { background: #238636; color: white; }
-.btn-primary:hover { background: #2ea043; }
-.btn-primary:disabled { background: #1a5a2a; cursor: not-allowed; }
+.btn-primary { background: #1677ff; color: white; }
+.btn-primary:hover { background: #4096ff; }
+.btn-primary:disabled { background: #a0c4ff; cursor: not-allowed; }
 .btn-outline { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
 .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
 .loading { opacity: 0.6; pointer-events: none; }
@@ -100,9 +100,10 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 18px 16px;
-  transition: transform 0.15s, border-color 0.2s;
+  transition: transform 0.15s, box-shadow 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.card:hover { transform: translateY(-2px); border-color: #58a6ff; }
+.card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 .card .label {
   font-size: 12px;
   color: var(--text-secondary);
@@ -185,7 +186,7 @@ table {
   font-size: 13px;
 }
 th {
-  background: #1c2128;
+  background: #fafafa;
   padding: 10px 8px;
   text-align: left;
   font-weight: 600;
@@ -204,7 +205,7 @@ td {
   border-bottom: 1px solid #21262d;
   vertical-align: middle;
 }
-tr:hover td { background: #1c2128; }
+tr:hover td { background: #f5f5f5; }
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 .text-muted { color: var(--text-muted); }
@@ -299,7 +300,7 @@ tr:hover td { background: #1c2128; }
   color: var(--text-secondary); text-decoration: none; font-size: 16px;
   padding: 6px 8px; border-radius: 6px; transition: all 0.2s;
 }
-.settings-link:hover { color: var(--text); background: var(--surface); }
+.settings-link:hover { color: var(--text); background: var(--surface); text-decoration: none; }
 </style>
 
 </head>
@@ -318,6 +319,7 @@ tr:hover td { background: #1c2128; }
       <button class="btn btn-outline" id="loadBtn" onclick="loadData()">📥 查询</button>
       <button class="btn btn-outline" onclick="loadData('yesterday')">📅 昨天</button>
       <a href="wb-settings.html" class="settings-link" title="设置">⚙️</a>
+      <a href="#" onclick="logout()" class="settings-link" title="退出登录" style="font-size:16px">⏻</a>
     </div>
   </div>
 
@@ -647,19 +649,19 @@ function renderCharts() {
       datasets: [{
         data: topCamp.map(c => c.cost),
         backgroundColor: ['#58a6ff','#3fb950','#d29922','#bc8cff','#39d2c0','#f778ba','#e3b341','#79c0ff','#7ee787','#ff7b72'],
-        borderColor: '#0d1117',
+        borderColor: '#ffffff',
         borderWidth: 2
       }]
     },
     options: {
       responsive: true,
       plugins: {
-        legend: { position: 'right', labels: { color: '#8b949e', font: { size: 11 }, boxWidth: 12, padding: 8 } },
+        legend: { position: 'right', labels: { color: '#8c8c8c', font: { size: 11 }, boxWidth: 12, padding: 8 } },
         tooltip: {
-          backgroundColor: '#1c2128',
-          titleColor: '#e6edf3',
-          bodyColor: '#e6edf3',
-          borderColor: '#30363d',
+          backgroundColor: '#ffffff',
+          titleColor: '#262626',
+          bodyColor: '#262626',
+          borderColor: '#e8e8e8',
           borderWidth: 1,
           callbacks: {
             label: ctx => ` ${ctx.label}: ${fmtMoney(ctx.parsed)}`
@@ -677,10 +679,10 @@ function chartOpts(unit) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: '#1c2128',
-        titleColor: '#e6edf3',
-        bodyColor: '#e6edf3',
-        borderColor: '#30363d',
+        backgroundColor: '#ffffff',
+        titleColor: '#262626',
+        bodyColor: '#262626',
+        borderColor: '#e8e8e8',
         borderWidth: 1,
         callbacks: {
           label: ctx => ` ${ctx.parsed.x} ${unit}`
@@ -689,16 +691,16 @@ function chartOpts(unit) {
     },
     scales: {
       x: { 
-        grid: { color: '#21262d' },
+        grid: { color: '#f0f0f0' },
         ticks: { 
-          color: '#8b949e',
+          color: '#8c8c8c',
           callback: v => fmtNum(v) 
         } 
       },
       y: { 
-        grid: { color: '#21262d' },
+        grid: { color: '#f0f0f0' },
         ticks: { 
-          color: '#8b949e',
+          color: '#8c8c8c',
           font: { size: 10 } 
         } 
       }
@@ -917,6 +919,12 @@ function getNameMapping(code) {
 
 // Load mappings on init
 loadNameMappings();
+
+// ====== Logout ======
+function logout() {
+  document.cookie = 'wb_session=; Path=/; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  window.location.href = '/login.html';
+}
 </script>
 </body>
 </html>
