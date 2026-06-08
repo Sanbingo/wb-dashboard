@@ -277,6 +277,21 @@ tr:hover td { background: #1c2128; }
   margin-right: 6px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Pagination */
+.pagination {
+  display: flex; justify-content: center; align-items: center;
+  margin-top: 12px; gap: 4px;
+}
+.page-btn {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); padding: 6px 10px; border-radius: 4px;
+  font-size: 13px; cursor: pointer; transition: all 0.15s;
+  min-width: 32px; text-align: center;
+}
+.page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.page-active { background: var(--accent); border-color: var(--accent); color: #fff; }
 }
 
 /* Settings link */
@@ -340,13 +355,13 @@ tr:hover td { background: #1c2128; }
       📋 商品明细
       <div class="table-controls">
         <span>显示</span>
-        <select id="filterOrders" onchange="renderTable()">
+        <select id="filterOrders" onchange="currentPage=1;renderTable()">
           <option value="all">全部</option>
           <option value="ordered">有订单</option>
           <option value="ad">有广告花费</option>
         </select>
         <span>搜索</span>
-        <input type="text" id="searchInput" placeholder="商品名称/编码" oninput="renderTable()" style="width:160px">
+        <input type="text" id="searchInput" placeholder="商品名称/编码" oninput="currentPage=1;renderTable()" style="width:160px">
       </div>
     </h3>
     <div id="tableContainer"><div class="status-bar">← 选择日期后点击"加载"</div></div>
@@ -359,10 +374,18 @@ let reportData = null;
 let chartSales = null, chartAdCost = null, chartAdRatio = null, chartCampaign = null;
 const SORTABLE_COLS = ['orders', 'amount', 'adCost', 'adRatio', 'buyout', 'views', 'carts'];
 let sortCol = 'adCost', sortDir = 'desc';
+const PAGE_SIZE = 20;
+let currentPage = 1;
 
 // ====== Init ======
 document.addEventListener('DOMContentLoaded', () => {
-  // Set date picker to today MSK
+  // Check session first
+  fetch('/api/check-session').then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.valid) {
+      window.location.href = '/login.html';
+      return;
+    }
+    // Set date picker to today MSK
   const now = new Date();
   const mskNow = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 3 * 3600000);
   document.getElementById('startDate').value = formatDate(mskNow);
@@ -670,18 +693,13 @@ function truncate(s, n) {
 }
 
 // ====== Table ======
-function renderTable() {
-  if (!reportData) return;
-  
+function getFilteredProducts() {
+  if (!reportData) return [];
   const filter = document.getElementById('filterOrders').value;
   const search = document.getElementById('searchInput').value.toLowerCase();
-  
   let products = [...reportData.products];
-  
-  // Filter
   if (filter === 'ordered') products = products.filter(p => p.orders > 0);
   else if (filter === 'ad') products = products.filter(p => p.adCost > 0);
-
   if (search) {
     products = products.filter(p => 
       (p.vendorCode && p.vendorCode.toLowerCase().includes(search)) ||
@@ -689,16 +707,21 @@ function renderTable() {
       String(p.nmId).includes(search)
     );
   }
-
-  // Sort
   products.sort((a, b) => {
     const va = a[sortCol] || 0;
     const vb = b[sortCol] || 0;
     return sortDir === 'desc' ? vb - va : va - vb;
   });
+  return products;
+}
 
-  // Highlight products with high ad ratio
-  const highlightAdRatio = products.some(p => p.adRatio > 15);
+function renderTable() {
+  if (!reportData) return;
+  const products = getFilteredProducts();
+  const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = products.slice(start, start + PAGE_SIZE);
 
   let html = `<table>
     <thead><tr>
@@ -715,38 +738,48 @@ function renderTable() {
     </tr></thead>
     <tbody>`;
 
-  if (products.length === 0) {
-    html += `<tr><td colspan="10" class="text-center text-muted">暂无数据</td></tr>`;
+  if (pageItems.length === 0) {
+    html += '<tr><td colspan="10" class="text-center text-muted">暂无数据</td></tr>';
   } else {
-    products.forEach((p, i) => {
+    pageItems.forEach((p, i) => {
+      const idx = start + i + 1;
       const adRatioColor = p.adRatio > 15 ? '#cf1322' : p.adRatio > 10 ? '#ff4d4f' : p.adRatio > 5 ? '#fa8c16' : '#52c41a';
       const prodName = getNameMapping(p.vendorCode) || p.vendorCode;
-      html += `<tr>
-        <td>${i + 1}</td>
-        <td><strong>${escapeHtml(prodName)}</strong></td>
-        <td class="text-right font-mono">${fmtNum(p.orders)}</td>
-        <td class="text-right font-mono">${fmtMoney(p.amount)}</td>
-        <td class="text-right font-mono">${fmtMoney(p.adCost)}</td>
-        <td class="text-right">
-          <div class="ratio-bar-wrapper">
-            <span class="font-mono" style="color:${adRatioColor};min-width:50px">${p.adRatio}%</span>
-            <div class="ratio-bar">
-              <div class="ratio-bar-fill" style="width:${Math.min(p.adRatio * 2, 100)}%;background:${adRatioColor}"></div>
-            </div>
-          </div>
-        </td>
-        <td class="text-right font-mono">${fmtNum(p.views)}</td>
-        <td class="text-right font-mono">${fmtNum(p.adClicks)}</td>
-        <td class="text-right font-mono">${fmtNum(p.carts)}</td>
-        <td class="text-right font-mono">${p.carts && p.views ? (p.carts/p.views*100).toFixed(1)+'%' : '0%'}</td>
-      </tr>`;
+      html += '<tr>' +
+        '<td>' + idx + '</td>' +
+        '<td><strong>' + escapeHtml(prodName) + '</strong></td>' +
+        '<td class="text-right font-mono">' + fmtNum(p.orders) + '</td>' +
+        '<td class="text-right font-mono">' + fmtMoney(p.amount) + '</td>' +
+        '<td class="text-right font-mono">' + fmtMoney(p.adCost) + '</td>' +
+        '<td class="text-right"><div class="ratio-bar-wrapper"><span class="font-mono" style="color:' + adRatioColor + ';min-width:50px">' + p.adRatio + '%</span><div class="ratio-bar"><div class="ratio-bar-fill" style="width:' + Math.min(p.adRatio * 2, 100) + '%;background:' + adRatioColor + '"></div></div></div></td>' +
+        '<td class="text-right font-mono">' + fmtNum(p.views) + '</td>' +
+        '<td class="text-right font-mono">' + fmtNum(p.adClicks) + '</td>' +
+        '<td class="text-right font-mono">' + fmtNum(p.carts) + '</td>' +
+        '<td class="text-right font-mono">' + (p.carts && p.views ? (p.carts/p.views*100).toFixed(1) + '%' : '0%') + '</td>' +
+        '</tr>';
     });
   }
 
-  html += `</tbody></table>
-    <div style="margin-top:8px;font-size:12px;color:#999;text-align:right">
-      共 ${reportData.products.length} 个商品 | 显示 ${products.length} 个
-    </div>`;
+  html += '</tbody></table>';
+
+  // Pagination
+  if (totalPages > 1) {
+    html += '<div class="pagination">';
+    html += '<button class="page-btn" onclick="goPage(1)" ' + (currentPage === 1 ? 'disabled' : '') + '>\u00AB</button>';
+    html += '<button class="page-btn" onclick="goPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>\u2039</button>';
+    var startPage = Math.max(1, currentPage - 2);
+    var endPage = Math.min(totalPages, startPage + 4);
+    if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+    for (var pi = startPage; pi <= endPage; pi++) {
+      html += '<button class="page-btn' + (pi === currentPage ? ' page-active' : '') + '" onclick="goPage(' + pi + ')">' + pi + '</button>';
+    }
+    html += '<button class="page-btn" onclick="goPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>\u203A</button>';
+    html += '<button class="page-btn" onclick="goPage(' + totalPages + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>\u00BB</button>';
+    html += '<span style="font-size:12px;color:var(--text-secondary);margin-left:10px">' + products.length + ' 条，第 ' + currentPage + '/' + totalPages + ' 页</span>';
+    html += '</div>';
+  } else {
+    html += '<div style="margin-top:8px;font-size:12px;color:var(--text-secondary);text-align:center">共 ' + products.length + ' 条</div>';
+  }
 
   document.getElementById('tableContainer').innerHTML = html;
 }
@@ -758,6 +791,12 @@ function sortTable(col) {
     sortCol = col;
     sortDir = col === 'vendorCode' ? 'asc' : 'desc';
   }
+  currentPage = 1;
+  renderTable();
+}
+
+function goPage(page) {
+  currentPage = page;
   renderTable();
 }
 

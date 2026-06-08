@@ -2,7 +2,8 @@
 """
 WB 日报网页服务器
 1. 提供静态HTML页面
-2. /api/wb-daily?date=YYYY-MM-DD 接口返回数据
+2. API接口
+3. 用户登录/会话管理
 
 用法: python3 wb-dashboard-server.py [端口号]
 默认端口: 8080
@@ -11,6 +12,8 @@ import json
 import subprocess
 import os
 import sys
+import uuid
+import time
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -22,6 +25,56 @@ WORKSPACE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_DIR = os.path.join(WORKSPACE, 'scripts') if os.path.isdir(os.path.join(WORKSPACE, 'scripts')) else WORKSPACE
 DATA_DIR = os.path.join(WORKSPACE, 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# 会话配置
+SESSION_FILE = os.path.join(DATA_DIR, 'sessions.json')
+SESSION_TTL = 86400  # 24小时
+LOGIN_USER = 'WB'
+LOGIN_PASS = '000111'
+
+PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/api/wb-daily', '/api/mappings']
+
+
+def load_sessions():
+    if os.path.exists(SESSION_FILE):
+        try:
+            with open(SESSION_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+
+def save_sessions(sessions):
+    with open(SESSION_FILE, 'w') as f:
+        json.dump(sessions, f)
+
+
+def create_session():
+    token = uuid.uuid4().hex
+    expires = time.time() + SESSION_TTL
+    sessions = load_sessions()
+    sessions[token] = expires
+    save_sessions(sessions)
+    return token, expires
+
+
+def check_session(token):
+    if not token:
+        return False
+    sessions = load_sessions()
+    now = time.time()
+    # Clean expired sessions
+    expired = [k for k, v in sessions.items() if v < now]
+    for k in expired:
+        del sessions[k]
+    if expired:
+        save_sessions(sessions)
+    
+    expires = sessions.get(token)
+    if expires and expires > now:
+        return True
+    return False
 
 
 def get_data_file(start_date, end_date=None):
@@ -49,7 +102,6 @@ def fetch_data(start_date, end_date=None):
         
         data = json.loads(stdout)
         if isinstance(data, dict) and 'summary' in data:
-            # Cache to file
             with open(get_data_file(start_date, end_date), 'w', encoding='utf-8') as f:
                 f.write(stdout)
             return data
@@ -65,17 +117,56 @@ def fetch_data(start_date, end_date=None):
 
 class DashboardHandler(BaseHTTPRequestHandler):
     
+    def is_protected(self, path):
+        clean = path.rstrip('/')
+        for p in PROTECTED_PATHS:
+            if clean.startswith(p):
+                return True
+        return False
+    
+    def get_session_token(self):
+        cookie = self.headers.get('Cookie', '')
+        for part in cookie.split(';'):
+            part = part.strip()
+            if part.startswith('wb_session='):
+                return part[11:]
+        return None
+    
+    def require_auth(self):
+        """Check auth, redirect to login if needed (for GET HTML requests)"""
+        token = self.get_session_token()
+        return check_session(token)
+    
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         params = urllib.parse.parse_qs(parsed.query)
+        
+        # Login page - no auth required
+        if path == '/login.html':
+            self.serve_file('wb-login.html', 'text/html; charset=utf-8')
+            return
+        
+        # Check session API
+        if path == '/api/check-session':
+            token = self.get_session_token()
+            valid = check_session(token)
+            self.send_json({'valid': valid})
+            return
+        
+        # Protected paths
+        if self.is_protected(path):
+            if not self.require_auth():
+                self.send_redirect('/login.html')
+                return
         
         if path == '/api/wb-daily':
             self.handle_api(params)
         elif path == '/api/mappings':
             self.handle_get_mappings()
         elif path == '/':
-            self.serve_file('wb-dashboard.html', 'text/html; charset=utf-8')
+            # Root - redirect to dashboard
+            self.send_redirect('/wb-dashboard.html')
         elif path.endswith('.html'):
             self.serve_file(path.lstrip('/'), 'text/html; charset=utf-8')
         elif path.endswith('.js'):
@@ -93,7 +184,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def handle_api(self, params):
         start = params.get('start', [None])[0]
         end = params.get('end', [None])[0]
-        # Also support single date param for backward compat
         date_str = params.get('date', [None])[0]
         
         now_utc = datetime.now(timezone.utc)
@@ -105,9 +195,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             end = start
         
         force = params.get('force', [None])[0]
-        is_today = is_force_refresh = (force == 'true')
+        is_force_refresh = (force == 'true')
         
-        # Check cache first (skip if force refresh)
         cache_file = get_data_file(start, end)
         cached_data = None
         if os.path.exists(cache_file):
@@ -118,9 +207,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 pass
         
         if is_force_refresh:
-            # 优先拉取实时数据
             data = fetch_data(start, end)
-            # 拉取失败则回退到缓存
             if (not data or data.get('error')) and cached_data:
                 data = cached_data
         else:
@@ -130,10 +217,42 @@ class DashboardHandler(BaseHTTPRequestHandler):
     
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == '/api/mappings':
+        path = parsed.path
+        
+        if path == '/api/login':
+            self.handle_login()
+        elif path == '/api/mappings':
+            # Check auth for mappings save
+            if not self.require_auth():
+                self.send_json({'error': 'unauthorized'}, 401)
+                return
             self.handle_save_mappings()
         else:
             self.send_error(404)
+    
+    def handle_login(self):
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length).decode('utf-8')
+            data = json.loads(body)
+            username = data.get('username', '')
+            password = data.get('password', '')
+            
+            if username == LOGIN_USER and password == LOGIN_PASS:
+                token, expires = create_session()
+                max_age = SESSION_TTL
+                expires_str = datetime.fromtimestamp(expires, tz=timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')
+                cookie = f'wb_session={token}; Path=/; Max-Age={max_age}; Expires={expires_str}; SameSite=Lax'
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Set-Cookie', cookie)
+                self.send_header('Cache-Control', 'no-cache')
+                self.end_headers()
+                self.wfile.write(json.dumps({'success': True}).encode('utf-8'))
+            else:
+                self.send_json({'success': False, 'error': '账号或密码错误'})
+        except Exception as e:
+            self.send_json({'success': False, 'error': str(e)})
     
     def handle_get_mappings(self):
         path = os.path.join(DATA_DIR, 'mappings.json')
@@ -159,10 +278,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json({'error': str(e)})
     
+    def send_redirect(self, location):
+        self.send_response(302)
+        self.send_header('Location', location)
+        self.end_headers()
+    
+    def send_json(self, data, status=200):
+        body = json.dumps(data, ensure_ascii=False)
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache')
+        self.end_headers()
+        self.wfile.write(body.encode('utf-8'))
+    
     def serve_file(self, filename, content_type, binary=False):
         filepath = os.path.join(WORKSPACE, filename)
         if not os.path.exists(filepath):
-            # Check data dir
             filepath = os.path.join(DATA_DIR, filename.split('/')[-1])
             if not os.path.exists(filepath):
                 self.send_error(404, f'File not found: {filename}')
@@ -174,7 +305,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 content = f.read()
             self.send_response(200)
             self.send_header('Content-Type', content_type)
-            self.send_header('Access-Control-Allow-Origin', '*')
             self.send_header('Cache-Control', 'no-cache')
             self.end_headers()
             if binary:
@@ -184,15 +314,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_error(500, str(e))
     
-    def send_json(self, data):
-        body = json.dumps(data, ensure_ascii=False)
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Cache-Control', 'no-cache')
-        self.end_headers()
-        self.wfile.write(body.encode('utf-8'))
-    
     def log_message(self, format, *args):
         ts = datetime.now().strftime('%H:%M:%S')
         print(f'[{ts}] {args[0]} {args[1]} {args[2]}')
@@ -201,11 +322,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
 def main():
     print(f"""
 🦊 WB 销售日报 服务器
-━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━
 📍 地址: http://localhost:{PORT}
-📊 接口: http://localhost:{PORT}/api/wb-daily?date=YYYY-MM-DD
+📊 接口: http://localhost:{PORT}/api/wb-daily
+🔐 登录: POST /api/login (WB / 000111)
 📁 工作目录: {WORKSPACE}
-━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━
 按 Ctrl+C 停止
 """)
     

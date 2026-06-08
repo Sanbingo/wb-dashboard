@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 - WB 销售日报</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-secondary: #8b949e;
+  --accent: #58a6ff;
+  --red: #f85149;
+  --green: #3fb950;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+.login-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 48px 40px 40px;
+  width: 380px;
+  text-align: center;
+}
+.login-box h1 {
+  font-size: 26px; margin-bottom: 6px;
+}
+.login-box .subtitle {
+  color: var(--text-secondary);
+  font-size: 13px; margin-bottom: 32px;
+}
+.login-box input {
+  width: 100%; padding: 12px 14px; margin-bottom: 14px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 15px; outline: none;
+  transition: border-color 0.2s;
+}
+.login-box input:focus { border-color: var(--accent); }
+.login-box .login-btn {
+  width: 100%; padding: 12px; margin-top: 4px;
+  background: #238636; border: none; border-radius: 6px;
+  color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+  transition: background 0.2s;
+}
+.login-box .login-btn:hover { background: #2ea043; }
+.login-box .login-btn:disabled { background: #1a5a2a; cursor: not-allowed; }
+.login-box .error-msg {
+  color: var(--red); font-size: 13px; margin-top: 14px; display: none;
+}
+.login-box .loading { display: none; margin-top: 14px; color: var(--text-secondary); font-size: 13px; }
+.spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.6s linear infinite;
+  vertical-align: middle; margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>📊 WB 销售日报</h1>
+  <p class="subtitle">请输入账号密码登录</p>
+  <input type="text" id="username" placeholder="账号" value="WB">
+  <input type="password" id="password" placeholder="密码" onkeydown="if(event.key==='Enter')doLogin()">
+  <button class="login-btn" id="loginBtn" onclick="doLogin()">登 录</button>
+  <div class="error-msg" id="errorMsg"></div>
+  <div class="loading" id="loading"><span class="spinner"></span>验证中...</div>
+</div>
+
+<script>
+function doLogin() {
+  var user = document.getElementById('username').value.trim();
+  var pass = document.getElementById('password').value;
+  if (!user || !pass) { showError('请输入账号和密码'); return; }
+  
+  document.getElementById('loginBtn').disabled = true;
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('errorMsg').style.display = 'none';
+  
+  fetch('/api/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username: user, password: pass})
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      window.location.href = '/wb-dashboard.html';
+    } else {
+      showError(data.error || '登录失败');
+    }
+  }).catch(function(err) {
+    showError('网络错误: ' + err.message);
+  }).finally(function() {
+    document.getElementById('loginBtn').disabled = false;
+    document.getElementById('loading').style.display = 'none';
+  });
+}
+
+function showError(msg) {
+  var el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+</script>
+</body>
+</html>

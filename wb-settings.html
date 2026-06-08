@@ -80,6 +80,7 @@ td input:focus { border-color: var(--accent); outline: none; }
   <div class="header">
     <h1>⚙️ 设置</h1>
     <a href="wb-dashboard.html">← 返回看板</a>
+    <a href="#" onclick="logout()" style="color:var(--text-secondary);font-size:12px;margin-left:8px">退出登录</a>
   </div>
 
   <div class="tip">💡 设置商品中文名称后，在看板中会优先显示中文名，留空则显示默认英文名。数据存储在服务器，所有用户共享。</div>
@@ -169,6 +170,16 @@ function saveMappings() {
   }).catch(function(err) {
     alert('❌ 保存失败: ' + err.message);
   });
+}
+
+// Check session
+fetch('/api/check-session').then(function(r){return r.json()}).then(function(d){
+  if(!d.valid) window.location.href='/login.html';
+});
+
+function logout() {
+  document.cookie = 'wb_session=; Path=/; Max-Age=0';
+  window.location.href = '/login.html';
 }
 
 renderMappings();
