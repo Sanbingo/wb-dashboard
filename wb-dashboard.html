@@ -379,19 +379,44 @@ let currentPage = 1;
 
 // ====== Init ======
 document.addEventListener('DOMContentLoaded', () => {
-  // Check session first
-  fetch('/api/check-session').then(function(r) { return r.json(); }).then(function(data) {
-    if (!data.valid) {
-      window.location.href = '/login.html';
-      return;
-    }
-    // Set date picker to today MSK
+  // Check session first, then init data
+  fetch('/api/check-session')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.valid) {
+        window.location.href = '/login.html';
+        return;
+      }
+      // Session valid - init and load data
+      initDashboard();
+    })
+    .catch(function() {
+      // Network error, try loading anyway
+      initDashboard();
+    });
+});
+
+function initDashboard() {
   const now = new Date();
   const mskNow = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 3 * 3600000);
   document.getElementById('startDate').value = formatDate(mskNow);
   document.getElementById('endDate').value = formatDate(mskNow);
-  loadData();
-});
+  // Initial load - don't force refresh, use cache for speed
+  cachedLoadData();
+}
+
+function cachedLoadData() {
+  const start = document.getElementById('startDate').value;
+  const end = document.getElementById('endDate').value;
+  if (!start || !end) return;
+  const url = '/api/wb-daily?start=' + start + '&end=' + end;
+  fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+    if (data && data.summary) {
+      reportData = data;
+      renderAll();
+    }
+  }).catch(function() {});
+}
 
 function formatDate(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
