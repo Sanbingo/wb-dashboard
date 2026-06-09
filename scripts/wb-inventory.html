@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📦 库存分析 - WB</title>
+<style>
+:root { --bg: #f5f5f5; --bg2: #ffffff; --bg3: #f0f0f0; --border: #e8e8e8; --text: #262626; --text2: #8c8c8c; --accent: #1677ff; --green: #52c41a; --orange: #fa8c16; --red: #ff4d4f; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; padding: 0; min-height: 100vh; }
+.header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.header h1 { font-size: 20px; font-weight: 600; }
+.header-actions { display: flex; gap: 10px; align-items: center; }
+.btn { padding: 8px 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg3); color: var(--text); cursor: pointer; font-size: 14px; transition: all .2s; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: #4096ff; color: #fff; }
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px 16px; }
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: var(--bg2); border-radius: 10px; padding: 24px; width: 360px; max-width: 90vw; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.modal-box h3 { margin-bottom: 16px; font-size: 16px; }
+.modal-box .field { margin-bottom: 14px; }
+.modal-box .field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+.modal-box .field input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+.modal-box .field input:focus { outline: none; border-color: var(--accent); }
+.modal-box .field .hint { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.modal-actions { display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end; }
+.stats-bar { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; cursor: pointer; transition: border-color .2s, background .2s; }
+.stat-card:hover { border-color: var(--accent); background: #f0f5ff; }
+.stat-card.active { border-color: var(--accent); background: #e6f0ff; box-shadow: 0 0 0 1px var(--accent); }
+.stat-card .label { color: var(--text2); font-size: 12px; }
+.stat-card .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+.toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.dropdown-wrap { position: relative; flex: 1; min-width: 260px; max-width: 420px; }
+.dropdown-trigger { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; font-size: 14px; user-select: none; }
+.dropdown-trigger:hover { border-color: var(--accent); }
+.dropdown-arrow { font-size: 10px; color: var(--text2); transition: transform .2s; }
+.dropdown-arrow.open { transform: rotate(180deg); }
+.dropdown-menu { display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 100; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; margin-top: 4px; max-height: 300px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.dropdown-menu.show { display: block; }
+.dropdown-item { display: flex; align-items: center; gap: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f5f5f5; }
+.dropdown-item:hover { background: var(--bg3); }
+.dropdown-item input[type=checkbox] { flex-shrink: 0; }
+.dropdown-item .item-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dropdown-item .item-nm { color: var(--text2); font-size: 11px; margin-left: auto; flex-shrink: 0; }
+.all-item { font-weight: 500; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg2); }
+.search-input { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: var(--text); font-size: 14px; min-width: 200px; max-width: 300px; }
+.search-input:focus { outline: none; border-color: var(--accent); }
+.product-table { width: 100%; border-collapse: collapse; }
+.product-table th { background: var(--bg3); padding: 10px 12px; text-align: left; font-size: 12px; color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+.product-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.product-row { cursor: pointer; }
+.product-row:hover { background: var(--bg3); }
+.product-row.expanded { background: #fafafa; }
+.product-row .nm-id { color: var(--text2); font-size: 12px; }
+.product-row .product-name { font-weight: 500; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-row .product-name .eng-name { color: var(--text2); font-size: 12px; font-weight: 400; margin-left: 6px; }
+.product-row .qty-num { font-weight: 600; }
+.product-row .qty-low { color: var(--red); }
+.product-row .qty-mid { color: var(--orange); }
+.product-row .qty-high { color: var(--green); }
+.product-row .price-val { font-family: 'SF Mono', monospace; }
+.product-row .expand-icon { color: var(--text2); font-size: 12px; margin-right: 8px; transition: transform .2s; display: inline-block; }
+.product-row.expanded .expand-icon { transform: rotate(90deg); }
+.cost-input { background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; color: var(--text); font-size: 13px; width: 80px; font-family: 'SF Mono', monospace; text-align: right; }
+.cost-input:focus { outline: none; border-color: var(--accent); background: var(--bg2); }
+.cost-input.saved { border-color: var(--green); }
+.size-detail { display: none; }
+.size-detail.visible { display: table-row; }
+.size-detail td { padding: 8px 12px 8px 48px; background: #fafafa; font-size: 13px; }
+.size-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.size-tag { display: inline-flex; align-items: center; gap: 6px; background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font-size: 13px; }
+.size-tag .size-name { font-weight: 600; color: var(--accent); }
+.size-tag .size-qty { font-weight: 600; }
+.wh-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.wh-item { font-size: 11px; color: var(--text2); background: var(--bg3); border: 1px solid var(--border); border-radius: 3px; padding: 2px 6px; }
+.wh-item .qty { color: var(--text); font-weight: 500; }
+.loading { text-align: center; padding: 60px 20px; color: var(--text2); }
+.spinner { display: inline-block; width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; margin-bottom: 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.error-box { background: #fff2f0; border: 1px solid var(--red); border-radius: 8px; padding: 20px; color: var(--red); text-align: center; margin: 20px 0; }
+.status-msg { position: fixed; top: 20px; right: 20px; padding: 10px 20px; border-radius: 6px; font-size: 14px; z-index: 999; opacity: 0; transition: opacity .3s; pointer-events: none; }
+.status-msg.show { opacity: 1; }
+.status-msg.success { background: var(--green); color: #fff; }
+.status-msg.error { background: var(--red); color: #fff; }
+.pagination { display: flex; justify-content: center; gap: 6px; margin-top: 20px; flex-wrap: wrap; }
+.page-btn { padding: 6px 14px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg2); color: var(--text); cursor: pointer; font-size: 13px; }
+.page-btn:hover { border-color: var(--accent); color: var(--accent); }
+.page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.page-btn:disabled { opacity: .4; cursor: not-allowed; }
+@media (max-width: 768px) { .container { padding: 12px; } .cost-input { width: 60px; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📦 库存分析</h1>
+  <div class="header-actions">
+    <span id="refreshTime" style="color:var(--text2);font-size:13px;"></span>
+    <button class="btn" onclick="openSettings()">⚙️ 设置</button>
+    <a href="/wb-dashboard.html" class="btn">← 返回日报</a>
+  </div>
+</div>
+
+<div class="container">
+      <div class="stats-bar">
+    <div class="stat-card" onclick="setFilter('')"><div class="label">商品数</div><div class="value" id="statProducts">--</div></div>
+    <div class="stat-card" onclick="setFilter('')"><div class="label">总库存</div><div class="value" id="statTotalQty">--</div></div>
+    <div class="stat-card" id="cardStockout" onclick="setFilter('stockout')"><div class="label">缺货</div><div class="value" id="statStockout" style="color:var(--red)">--</div></div>
+    <div class="stat-card" id="cardLowStock" onclick="setFilter('lowstock')"><div class="label">低库存</div><div class="value" id="statLowStock" style="color:var(--orange)">--</div></div>
+  </div>
+
+  <div class="toolbar">
+    <div class="dropdown-wrap">
+      <div class="dropdown-trigger" onclick="toggleDropdown()">
+        <span id="selectLabel">全部商品</span>
+        <span class="dropdown-arrow">▼</span>
+      </div>
+      <div class="dropdown-menu" id="dropdownMenu">
+        <label class="dropdown-item all-item" onclick="event.stopPropagation()">
+          <input type="checkbox" id="selectAll" checked onchange="toggleAll(this)"> 全部商品
+        </label>
+        <div id="productChecklist"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="queryBtn" onclick="doQuery()">🔍 查询</button>
+    <input class="search-input" id="searchInput" placeholder="🔍 搜索名称、nmId..." oninput="onSearchInput()" style="flex:none">
+    <label style="color:var(--text2);font-size:13px;display:flex;align-items:center;gap:4px">
+      <input type="checkbox" id="hideNoStock" onchange="onSearchInput()"> 隐藏无货
+    </label>
+  </div>
+
+  <div id="content">
+    <div class="loading" id="loadingState">
+      <div class="spinner"></div>
+      <div>加载库存数据中...</div>
+    </div>
+  </div>
+  <div id="pagination" class="pagination" style="display:none"></div>
+  </div>
+
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal-box">
+    <h3>⚙️ 测算参数设置</h3>
+    <div class="field">
+      <label>备货天数（采购到入库的天数）</label>
+      <input type="number" id="leadTime" value="25" min="1" max="120">
+    </div>
+    <div class="field">
+      <label>旺季补货倍率</label>
+      <input type="number" id="peakMultiplier" value="1.0" step="0.1" min="1" max="5">
+      <div class="hint">日常=1.0，旺季=1.5~2.0</div>
+    </div>
+    <div class="field">
+      <label>低库存阈值（天）</label>
+      <input type="number" id="lowStockThreshold" value="25" min="1" max="90">
+      <div class="hint">平季25天，旺季45天</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeSettings()">取消</button>
+      <button class="btn btn-primary" onclick="saveSettings()">📊 保存并测算</button>
+    </div>
+  </div>
+</div>
+
+<div class="status-msg" id="statusMsg"></div>
+
+<script>
+var inventoryData = null;
+var configLeadTime = 25;
+var configMultiplier = 1.0;
+var configLowThreshold = 25;
+var PAGE_SIZE = 15;
+var currentPage = 1;
+
+function openSettings() {
+  var modal = document.getElementById('settingsModal');
+  modal.classList.add('show');
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('show');
+}
+
+function saveSettings() {
+  configLeadTime = parseInt(document.getElementById('leadTime').value) || 25;
+  configMultiplier = parseFloat(document.getElementById('peakMultiplier').value) || 1.0;
+  configLowThreshold = parseInt(document.getElementById('lowStockThreshold').value) || 25;
+  closeSettings();
+  recalculate();
+}
+
+var filterMode = ''; // '' = all, 'stockout', 'lowstock'
+
+function loadInventory() {
+  var loading = document.getElementById('loadingState');
+  var content = document.getElementById('content');
+  var queryBtn = document.getElementById('queryBtn');
+  queryBtn.disabled = true;
+  loading.style.display = 'block';
+  
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/api/wb-inventory', true);
+  xhr.timeout = 25000;
+  
+  xhr.onload = function() {
+    queryBtn.disabled = false;
+    if (xhr.status === 302 || xhr.status === 401) { window.location.href = '/login.html'; return; }
+    if (xhr.status !== 200) { content.innerHTML = '<div class="error-box">服务器错误: ' + xhr.status + '</div>'; loading.style.display = 'none'; return; }
+    var respText = xhr.responseText;
+    if (respText.indexOf('<!DOCTYPE') === 0 || respText.indexOf('<html') === 0) { window.location.href = '/login.html'; return; }
+    try {
+      var data = JSON.parse(respText);
+      if (data.error) { content.innerHTML = '<div class="error-box">加载失败: ' + data.error + '</div>'; loading.style.display = 'none'; return; }
+      inventoryData = data;
+      currentPage = 1;
+      populateSelect(data.products);
+      renderStats(data);
+      // 从输入框读取配置
+      recalculate();
+      document.getElementById('refreshTime').textContent = data.date + ' MSK';
+    } catch(e) { content.innerHTML = '<div class="error-box">数据解析失败</div>'; }
+    loading.style.display = 'none';
+  };
+  xhr.onerror = function() { queryBtn.disabled = false; content.innerHTML = '<div class="error-box">网络请求失败</div>'; loading.style.display = 'none'; };
+  xhr.ontimeout = function() { queryBtn.disabled = false; content.innerHTML = '<div class="error-box">请求超时，请重试</div>'; loading.style.display = 'none'; };
+  xhr.send();
+}
+
+function populateSelect(products) {
+  var container = document.getElementById('productChecklist');
+  container.innerHTML = '';
+  for (var i = 0; i < products.length; i++) {
+    var p = products[i];
+    var label = p.displayName;
+    if (p.chineseName) label = p.chineseName;
+    var item = document.createElement('label');
+    item.className = 'dropdown-item';
+    item.onclick = function(e) { e.stopPropagation(); };
+    item.innerHTML = '<input type="checkbox" class="prod-cb" value="' + p.nmId + '" checked onchange="onCheckChange()">' +
+      '<span class="item-label">' + escHtml(label) + '</span>' +
+      '<span class="item-nm">' + p.nmId + '</span>';
+    container.appendChild(item);
+  }
+  updateLabel();
+}
+
+function getSelectedNmIds() {
+  var ids = [];
+  var cbs = document.querySelectorAll('.prod-cb:checked');
+  for (var i = 0; i < cbs.length; i++) {
+    ids.push(parseInt(cbs[i].value, 10));
+  }
+  return ids;
+}
+
+function onCheckChange() {
+  var total = document.querySelectorAll('.prod-cb').length;
+  var checked = document.querySelectorAll('.prod-cb:checked').length;
+  document.getElementById('selectAll').checked = checked === total;
+  updateLabel();
+  doQuery();
+}
+
+function toggleAll(el) {
+  var cbs = document.querySelectorAll('.prod-cb');
+  for (var i = 0; i < cbs.length; i++) { cbs[i].checked = el.checked; }
+  updateLabel();
+  doQuery();
+}
+
+function toggleDropdown() {
+  var menu = document.getElementById('dropdownMenu');
+  menu.classList.toggle('show');
+  document.querySelector('.dropdown-arrow').classList.toggle('open');
+}
+
+function updateLabel() {
+  var total = document.querySelectorAll('.prod-cb').length;
+  var checked = document.querySelectorAll('.prod-cb:checked').length;
+  var label = document.getElementById('selectLabel');
+  if (checked === 0) label.textContent = '未选择';
+  else if (checked === total) label.textContent = '全部商品';
+  else label.textContent = '已选 ' + checked + '/' + total;
+}
+
+// 点击外部关闭下拉
+function closeDropdown(e) {
+  var wrap = document.querySelector('.dropdown-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    var menu = document.getElementById('dropdownMenu');
+    if (menu) menu.classList.remove('show');
+    var arrow = document.querySelector('.dropdown-arrow');
+    if (arrow) arrow.classList.remove('open');
+  }
+}
+document.addEventListener('click', closeDropdown);
+
+function doQuery() {
+  var ids = getSelectedNmIds();
+  currentPage = 1;
+  renderPage();
+}
+
+function onSearchInput() {
+  currentPage = 1;
+  renderPage();
+}
+
+function setFilter(mode) {
+  filterMode = mode;
+  // 更新卡片高亮
+  document.querySelectorAll('.stat-card').forEach(function(c) { c.classList.remove('active'); });
+  if (mode === 'stockout') document.getElementById('cardStockout').classList.add('active');
+  else if (mode === 'lowstock') document.getElementById('cardLowStock').classList.add('active');
+  currentPage = 1;
+  renderPage();
+}
+
+function getFilteredProducts() {
+  if (!inventoryData) return [];
+  var q = document.getElementById('searchInput').value.toLowerCase().trim();
+  var hideNoStock = document.getElementById('hideNoStock').checked;
+  var result = [];
+  for (var i = 0; i < inventoryData.products.length; i++) {
+    var p = inventoryData.products[i];
+    var ids = getSelectedNmIds();
+    if (ids.length > 0 && ids.indexOf(p.nmId) === -1) continue;
+    if (hideNoStock && p.totalQty === 0) continue;
+    // 指标卡片筛选
+    if (filterMode === 'stockout' && p.totalQty > 0) continue;
+    if (filterMode === 'lowstock' && !p.lowStock) continue;
+    if (q) {
+      var match = String(p.nmId).indexOf(q) >= 0 || p.vendorCode.toLowerCase().indexOf(q) >= 0 || p.displayName.toLowerCase().indexOf(q) >= 0 || (p.chineseName && p.chineseName.toLowerCase().indexOf(q) >= 0);
+      if (!match) continue;
+    }
+    result.push(p);
+  }
+  return result;
+}
+
+function renderPage() {
+  var filtered = getFilteredProducts();
+  renderProducts(filtered);
+  renderPagination(filtered.length);
+}
+
+function renderStats(data) {
+  document.getElementById('statProducts').textContent = data.totalProducts;
+  document.getElementById('statTotalQty').textContent = fmtNum(data.totalQty);
+  var stockout = 0, lowStockCount = 0;
+  for (var i = 0; i < data.products.length; i++) {
+    var p = data.products[i];
+    if (p.totalQty === 0) stockout++;
+    else if (p.lowStock) lowStockCount++;
+  }
+  document.getElementById('statStockout').textContent = stockout;
+  document.getElementById('statLowStock').textContent = lowStockCount;
+}
+
+function recalculate() {
+  if (!inventoryData) return;
+  
+  // 同步输入框的值到配置变量
+  var ltInput = document.getElementById('leadTime');
+  var mpInput = document.getElementById('peakMultiplier');
+  var thInput = document.getElementById('lowStockThreshold');
+  if (ltInput) configLeadTime = parseInt(ltInput.value) || 25;
+  if (mpInput) configMultiplier = parseFloat(mpInput.value) || 1.0;
+  if (thInput) configLowThreshold = parseInt(thInput.value) || 25;
+  
+  var prods = inventoryData.products;
+  for (var i = 0; i < prods.length; i++) {
+    var p = prods[i];
+    var o7 = p.orders7d || 0, o15 = p.orders15d || 0, o30 = p.orders30d || 0;
+    var avg7 = o7 / 7, avg15 = o15 / 15, avg30 = o30 / 30;
+    p.weightedAvgOrders = Math.round((avg7 * 0.4 + avg15 * 0.3 + avg30 * 0.3) * 100) / 100;
+    
+    if (p.weightedAvgOrders > 0 && p.totalQty > 0) {
+      var turnDays = p.totalQty / p.weightedAvgOrders;
+      p.turnoverDays = Math.round(turnDays * 10) / 10;
+      p.canSellDays = Math.round((turnDays - configLeadTime) * 10) / 10;
+      p.lowStock = turnDays < configLowThreshold;
+      
+      // 断货日期
+      var stockoutDate = new Date();
+      stockoutDate.setDate(stockoutDate.getDate() + Math.floor(turnDays));
+      p.predictedStockoutDate = (stockoutDate.getMonth()+1).toString().padStart(2,'0') + '-' + stockoutDate.getDate().toString().padStart(2,'0');
+      
+      // 补货日期
+      var reorderDays = Math.floor(turnDays - configLeadTime);
+      if (reorderDays <= 0) {
+        p.predictedReorderDate = '立即下单';
+      } else {
+        var reorderDate = new Date();
+        reorderDate.setDate(reorderDate.getDate() + reorderDays);
+        p.predictedReorderDate = (reorderDate.getMonth()+1).toString().padStart(2,'0') + '-' + reorderDate.getDate().toString().padStart(2,'0');
+      }
+      
+      // 补货量
+      p.normalRestockQty = Math.round(configLeadTime * p.weightedAvgOrders * 10) / 10;
+      p.peakRestockQty = Math.round(configLeadTime * p.weightedAvgOrders * configMultiplier * 10) / 10;
+      p.predictedRestockQty = p.peakRestockQty;
+    } else {
+      p.turnoverDays = 0; p.canSellDays = 0; p.lowStock = false;
+      p.predictedStockoutDate = ''; p.predictedReorderDate = '';
+      p.normalRestockQty = 0; p.peakRestockQty = 0; p.predictedRestockQty = 0;
+    }
+  }
+  renderStats(inventoryData);
+  renderPage();
+  showStatus('已按新参数重新测算', 'success');
+}
+
+function renderProducts(products) {
+  var content = document.getElementById('content');
+  if (!products || products.length === 0) { content.innerHTML = '<div class="error-box">暂无匹配的商品</div>'; return; }
+  var totalPages = Math.ceil(products.length / PAGE_SIZE);
+  if (currentPage > totalPages) currentPage = totalPages;
+  var start = (currentPage - 1) * PAGE_SIZE;
+  var end = Math.min(start + PAGE_SIZE, products.length);
+  var pageProducts = products.slice(start, end);
+  
+  var html = '<table class="product-table"><thead><tr>' +
+    '<th style="width:30px"></th>' +
+    '<th style="min-width:160px">商品</th>' +
+    '<th>尺码</th>' +
+    '<th style="text-align:right">展示价</th>' +
+    '<th style="text-align:right">成本价</th>' +
+    '<th style="text-align:right">库存</th>' +
+    '<th style="text-align:right">日均订单</th>' +
+    '<th style="text-align:right">周转(天)</th>' +
+    '<th style="text-align:right">可售天数</th>' +
+    '<th style="text-align:right">断货日期</th>' +
+    '<th style="text-align:right">补货日期</th>' +
+    '<th style="text-align:right">补货量</th>' +
+    '</tr></thead><tbody>';
+  
+  for (var i = 0; i < pageProducts.length; i++) {
+    var p = pageProducts[i];
+    var absIdx = start + i;
+    var qtyClass = p.totalQty === 0 ? 'qty-low' : (p.totalQty < 50 ? 'qty-mid' : 'qty-high');
+    var hasSizes = p.sizes.length > 1 || p.totalQty > 0; // 有库存的商品都可以展开看尺码
+    var nameDisplay = escHtml(p.displayName);
+    var vendorCode = escHtml(p.vendorCode);
+    var sizesHtml = '';
+    for (var j = 0; j < p.sizes.length; j++) {
+      if (j > 0) sizesHtml += ', ';
+      sizesHtml += escHtml(p.sizes[j].techSize) + '=' + fmtNum(p.sizes[j].totalQty);
+    }
+    
+    html += '<tr class="product-row" data-index="' + absIdx + '" onclick="' + (hasSizes ? "toggleSize('" + absIdx + "')" : '') + '">';
+    html += '<td>' + (hasSizes ? '<span class="expand-icon">&#9654;</span>' : '') + '</td>';
+    html += '<td><div class="product-name">' + nameDisplay + (p.chineseName ? '<span class="eng-name">' + vendorCode + '</span>' : '') + '</div><div class="nm-id">nmId: ' + p.nmId + (p.vendorCode !== p.displayName ? ' | ' + vendorCode : '') + '</div></td>';
+    html += '<td style="font-size:12px;color:var(--text2)">' + sizesHtml + '</td>';
+    html += '<td class="price-val" style="text-align:right">' + fmtMoney(p.displayPrice) + '</td>';
+    html += '<td style="text-align:right"><input class="cost-input" type="number" step="0.01" min="0" value="' + (p.costPrice || '') + '" data-nm="' + p.nmId + '" onclick="event.stopPropagation()" onchange="saveCostPrice(this)" onfocus="this.select()"></td>';
+    html += '<td style="text-align:right" class="qty-num ' + qtyClass + '">' + fmtNum(p.totalQty) + '</td>';
+    html += '<td style="text-align:right">' + (p.weightedAvgOrders ? fmtNum1(p.weightedAvgOrders) : '-') + '</td>';
+    html += '<td style="text-align:right">' + (p.turnoverDays ? fmtNum(p.turnoverDays) + '天' : '-') + '</td>';
+    
+    // 可售天数
+    var sellDays = p.canSellDays || 0;
+    var sellClass = sellDays < 0 ? 'qty-low' : (sellDays < 30 ? 'qty-mid' : 'qty-high');
+    html += '<td style="text-align:right" class="' + sellClass + '">' + fmtNum(sellDays) + '</td>';
+    
+    // 断货日期
+    html += '<td style="text-align:right;font-size:12px">' + (p.predictedStockoutDate || '-') + '</td>';
+    
+    // 补货日期
+    var reorderHtml = p.predictedReorderDate || '-';
+    if (reorderHtml === '立即下单') reorderHtml = '<span style="color:var(--red);font-weight:600">立即下单</span>';
+    html += '<td style="text-align:right;font-size:12px">' + reorderHtml + '</td>';
+    
+    // 补货量（显示当前季节建议值+括号内淡季值）
+    var restockVal = p.predictedRestockQty || 0;
+    var normalVal = p.normalRestockQty || 0;
+    if (restockVal > 0) {
+      var restockHtml = fmtNum(Math.round(restockVal));
+      if (normalVal > 0 && Math.abs(restockVal - normalVal) > 0.01) {
+        restockHtml += ' <span style="color:var(--text2);font-size:11px">(' + fmtNum(Math.round(normalVal)) + ')</span>';
+      }
+      if (p.lowStock) restockHtml = '<span style="color:var(--red);font-weight:600">' + restockHtml + '</span>';
+      html += '<td style="text-align:right;font-size:13px">' + restockHtml + '</td>';
+    } else {
+      html += '<td style="text-align:right">-</td>';
+    }
+    html += '</tr>';
+    
+    if (hasSizes) {
+      for (var j = 0; j < p.sizes.length; j++) {
+        var s = p.sizes[j];
+        html += '<tr class="size-detail" data-parent="' + absIdx + '"><td colspan="8"><div class="size-row">';
+        html += '<span class="size-tag"><span class="size-name">' + escHtml(s.techSize) + '</span> <span class="size-qty">' + fmtNum(s.totalQty) + '</span></span><div class="wh-list">';
+        for (var k = 0; k < s.warehouses.length; k++) {
+          if (s.warehouses[k].quantity > 0) html += '<span class="wh-item">' + escHtml(s.warehouses[k].name) + ' <span class="qty">' + s.warehouses[k].quantity + '</span></span>';
+        }
+        html += '</div></div></td></tr>';
+      }
+    }
+  }
+  html += '</tbody></table>';
+  if (products.length > PAGE_SIZE) html += '<div style="text-align:center;padding:8px;color:var(--text2);font-size:13px">显示 ' + (start+1) + '-' + end + ' / 共 ' + products.length + ' 个商品</div>';
+  content.innerHTML = html;
+}
+
+function renderPagination(total) {
+  var el = document.getElementById('pagination');
+  var totalPages = Math.ceil(total / PAGE_SIZE);
+  if (totalPages <= 1) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  var html = '<button class="page-btn" onclick="goPage(' + (currentPage-1) + ')" ' + (currentPage <= 1 ? 'disabled' : '') + '>&#9664;</button>';
+  var startPage = Math.max(1, currentPage - 2);
+  var endPage = Math.min(totalPages, currentPage + 2);
+  if (startPage > 1) html += '<button class="page-btn" onclick="goPage(1)">1</button>';
+  if (startPage > 2) html += '<span style="color:var(--text2);padding:0 4px">...</span>';
+  for (var i = startPage; i <= endPage; i++) html += '<button class="page-btn' + (i === currentPage ? ' active' : '') + '" onclick="goPage(' + i + ')">' + i + '</button>';
+  if (endPage < totalPages - 1) html += '<span style="color:var(--text2);padding:0 4px">...</span>';
+  if (endPage < totalPages) html += '<button class="page-btn" onclick="goPage(' + totalPages + ')">' + totalPages + '</button>';
+  html += '<button class="page-btn" onclick="goPage(' + (currentPage+1) + ')" ' + (currentPage >= totalPages ? 'disabled' : '') + '>&#9654;</button>';
+  el.innerHTML = html;
+}
+
+function goPage(page) { currentPage = page; renderPage(); document.getElementById('content').scrollIntoView({behavior:'smooth',block:'start'}); }
+function toggleSize(index) {
+  var rows = document.querySelectorAll('.size-detail[data-parent="' + index + '"]');
+  var pr = document.querySelector('.product-row[data-index="' + index + '"]');
+  var vis = rows.length > 0 && rows[0].className.indexOf('visible') >= 0;
+  
+  if (vis) {
+    // Hide
+    for (var i = 0; i < rows.length; i++) rows[i].className = 'size-detail';
+    if (pr) pr.className = pr.className.replace(' expanded', '');
+  } else {
+    // Show - fetch sizes if not already loaded
+    if (rows.length === 0 && inventoryData) {
+      var p = getProductByAbsIndex(index);
+      if (p) fetchSizes(p, index);
+    }
+    for (var i = 0; i < rows.length; i++) rows[i].className = 'size-detail visible';
+    if (pr) pr.className = pr.className + ' expanded';
+  }
+}
+
+function getProductByAbsIndex(idx) {
+  var filtered = getFilteredProducts();
+  if (idx >= 0 && idx < filtered.length) return filtered[idx];
+  return null;
+}
+
+function fetchSizes(product, index) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/api/wb-inventory-sizes?nmId=' + product.nmId, true);
+  xhr.timeout = 10000;
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        if (data.sizes && data.sizes.length > 0) {
+          product.sizes = data.sizes;
+          // Re-render this product's detail rows
+          insertSizeRows(product, index);
+        }
+      } catch(e) {}
+    }
+  };
+  xhr.send();
+}
+
+function insertSizeRows(product, index) {
+  var table = document.querySelector('.product-table tbody');
+  if (!table) return;
+  
+  // Find the product row
+  var pr = table.querySelector('.product-row[data-index="' + index + '"]');
+  if (!pr) return;
+  
+  // Create detail rows
+  var html = '';
+  for (var j = 0; j < product.sizes.length; j++) {
+    var s = product.sizes[j];
+    html += '<tr class="size-detail visible" data-parent="' + index + '"><td colspan="8"><div class="size-row">';
+    html += '<span class="size-tag"><span class="size-name">' + escHtml(s.techSize) + '</span> <span class="size-qty">' + fmtNum(s.totalQty) + '</span></span><div class="wh-list">';
+    for (var k = 0; k < s.warehouses.length; k++) {
+      html += '<span class="wh-item">' + escHtml(s.warehouses[k].name) + ' <span class="qty">' + s.warehouses[k].quantity + '</span></span>';
+    }
+    html += '</div></div></td></tr>';
+  }
+  
+  // Insert after the product row
+  var frag = document.createDocumentFragment();
+  var temp = document.createElement('tbody');
+  temp.innerHTML = html;
+  while (temp.firstChild) frag.appendChild(temp.firstChild);
+  
+  pr.parentNode.insertBefore(frag, pr.nextSibling);
+}
+
+var saveTimer = null;
+function saveCostPrice(input) {
+  var nmId = input.getAttribute('data-nm');
+  var val = input.value;
+  if (saveTimer) clearTimeout(saveTimer);
+  input.className = input.className.replace(' saved', '');
+  saveTimer = setTimeout(function() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/cost-price', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function() {
+      // 检查响应是否HTML（会话过期被重定向到登录页了）
+      var respText = xhr.responseText;
+      if (respText.indexOf('<!DOCTYPE') === 0 || respText.indexOf('<html') === 0) {
+        window.location.href = '/login.html';
+        return;
+      }
+      if (xhr.status === 200) {
+        try {
+          var d = JSON.parse(respText);
+          if (d.status === 'ok') {
+            input.className += ' saved';
+            showStatus('成本价已保存', 'success');
+          } else {
+            showStatus('保存失败', 'error');
+          }
+        } catch(e) {
+          showStatus('保存失败', 'error');
+        }
+      } else {
+        showStatus('保存失败', 'error');
+      }
+    };
+    xhr.onerror = function() { showStatus('网络错误', 'error'); };
+    xhr.send(JSON.stringify({nmId: parseInt(nmId, 10), costPrice: val === '' ? null : parseFloat(val)}));
+  }, 600);
+}
+
+
+
+function fmtNum(n) { n = n || 0; return n.toLocaleString ? n.toLocaleString('ru-RU') : String(n); }
+function fmtNum1(n) { return typeof n === 'number' ? n.toFixed(1) : String(n || ''); }
+function fmtMoney(n) { n = n || 0; return (n.toLocaleString ? n.toLocaleString('ru-RU', {minimumFractionDigits:2,maximumFractionDigits:2}) : n.toFixed(2)) + '\u20BD'; }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function showStatus(text, type) {
+  var el = document.getElementById('statusMsg');
+  el.textContent = text;
+  el.className = 'status-msg ' + type + ' show';
+  setTimeout(function() { el.className = ''; }, 2500);
+}
+
+document.addEventListener('DOMContentLoaded', function() { loadInventory(); });
+</script>
+</body>
+</html>

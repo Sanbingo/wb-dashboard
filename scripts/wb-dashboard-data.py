@@ -19,6 +19,7 @@ import sys
 import os
 import time
 from datetime import datetime, timezone, timedelta
+MSK_TZ = timezone(timedelta(hours=3))
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import WB_TOKEN_FILE, LOG_DIR
@@ -416,7 +417,7 @@ def main():
             start_date = args.start
             end_date = args.end if args.end else args.start
         else:
-            start_date = end_date = (now_utc - timedelta(hours=5, days=1)).strftime('%Y-%m-%d')
+            start_date = end_date = (now_utc.astimezone(MSK_TZ) - timedelta(days=1)).strftime('%Y-%m-%d')
         
         log(f"统计日期区间(MSK): {start_date} ~ {end_date}")
 

@@ -1,8 +1,51 @@
+# Test scripts
+scripts/test-*.py
+scripts/test-*.sh
+scripts/replace_*.py
+scripts/check-*.py
+scripts/debug-*.html
+
+# Excel files
+*.xlsx
+
+# Python cache
 __pycache__/
 *.pyc
-logs/
-data/*.json
-!data/mappings.json
-secrets/
-backups/
+
+# macOS
 .DS_Store
+
+# Config/secrets
+secrets/
+scripts/server_config.py
+scripts/server_feishu.py
+scripts/server_files/
+
+# Agent files
+.openclaw/
+AGENTS.md
+BOOTSTRAP.md.done
+HEARTBEAT.md
+IDENTITY.md
+MEMORY.md
+SOUL.md
+TOOLS.md
+USER.md
+memory/
+conversations/
+skills/
+openclaw-plan-lists/
+
+# Working scripts
+arehouse_check3.py
+search_8795.py
+xiaoli/
+ozon/
+
+# Cron/logs
+scripts/logs/
+scripts/monitor.py
+scripts/install-cron.sh
+scripts/clean-session-locks.sh
+scripts/refresh-data.sh
+scripts/task_manager.py
