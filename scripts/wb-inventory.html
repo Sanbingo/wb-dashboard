@@ -518,7 +518,7 @@ function renderProducts(products) {
     if (hasSizes) {
       for (var j = 0; j < p.sizes.length; j++) {
         var s = p.sizes[j];
-        html += '<tr class="size-detail" data-parent="' + absIdx + '"><td colspan="8"><div class="size-row">';
+        html += '<tr class="size-detail" data-parent="' + absIdx + '"><td colspan="12"><div class="size-row">';
         html += '<span class="size-tag"><span class="size-name">' + escHtml(s.techSize) + '</span> <span class="size-qty">' + fmtNum(s.totalQty) + '</span></span><div class="wh-list">';
         for (var k = 0; k < s.warehouses.length; k++) {
           if (s.warehouses[k].quantity > 0) html += '<span class="wh-item">' + escHtml(s.warehouses[k].name) + ' <span class="qty">' + s.warehouses[k].quantity + '</span></span>';
@@ -607,8 +607,54 @@ function insertSizeRows(product, index) {
   var html = '';
   for (var j = 0; j < product.sizes.length; j++) {
     var s = product.sizes[j];
-    html += '<tr class="size-detail visible" data-parent="' + index + '"><td colspan="8"><div class="size-row">';
-    html += '<span class="size-tag"><span class="size-name">' + escHtml(s.techSize) + '</span> <span class="size-qty">' + fmtNum(s.totalQty) + '</span></span><div class="wh-list">';
+    
+    // 尺码级补货计算
+    var avgOrders = s.avgOrders || 0;
+    var turnoverDays = s.turnoverDays || 0;
+    var canSellDays = turnoverDays > 0 ? Math.round((turnoverDays - configLeadTime) * 10) / 10 : 0;
+    
+    var qtyClass = s.totalQty === 0 ? 'qty-low' : (s.totalQty < 50 ? 'qty-mid' : 'qty-high');
+    
+    // 断货日期
+    var stockoutDate = '';
+    if (avgOrders > 0 && s.totalQty > 0) {
+      var sd = new Date();
+      sd.setDate(sd.getDate() + Math.floor(turnoverDays));
+      stockoutDate = (sd.getMonth()+1).toString().padStart(2,'0') + '-' + sd.getDate().toString().padStart(2,'0');
+    }
+    
+    // 补货日 & 补货量
+    var reorderDate = '';
+    var restockQty = 0;
+    if (avgOrders > 0 && s.totalQty > 0) {
+      var reorderDays = Math.floor(turnoverDays - configLeadTime);
+      if (reorderDays <= 0) {
+        reorderDate = '<span style="color:var(--red);font-weight:600">立即下单</span>';
+      } else {
+        var rd = new Date();
+        rd.setDate(rd.getDate() + reorderDays);
+        reorderDate = (rd.getMonth()+1).toString().padStart(2,'0') + '-' + rd.getDate().toString().padStart(2,'0');
+      }
+      restockQty = Math.round(configLeadTime * avgOrders * configMultiplier);
+    }
+    
+    var canSellClass = canSellDays < 0 ? 'qty-low' : (canSellDays < 30 ? 'qty-mid' : 'qty-high');
+    var canSellColor = canSellClass === 'qty-low' ? 'var(--red)' : (canSellClass === 'qty-mid' ? 'var(--orange)' : 'var(--green)');
+    
+    html += '<tr class="size-detail visible" data-parent="' + index + '"><td colspan="12"><div class="size-row">';
+    html += '<span class="size-tag"><span class="size-name">' + escHtml(s.techSize) + '</span> <span class="size-qty ' + qtyClass + '">' + fmtNum(s.totalQty) + '</span></span>';
+    html += '<span style="color:var(--text2);font-size:12px">日均:</span><span style="font-weight:600;font-size:13px">' + (avgOrders ? fmtNum1(avgOrders) : '-') + '</span>';
+    html += '<span style="color:var(--text2);font-size:12px">周转:</span><span style="font-weight:600;font-size:13px">' + (turnoverDays ? fmtNum(turnoverDays) + '天' : '-') + '</span>';
+    html += '<span style="color:var(--text2);font-size:12px">可售:</span><span style="font-weight:600;font-size:13px;color:' + canSellColor + '">' + fmtNum(canSellDays) + '</span>';
+    html += ' | ';
+    if (restockQty > 0) {
+      html += '<span style="color:var(--orange);font-weight:700;font-size:13px">补' + fmtNum(restockQty) + '件</span>';
+      html += '<span style="color:var(--text2);font-size:12px"> ' + stockoutDate + '断货</span>';
+      html += '<span style="font-size:13px"> → ' + reorderDate + '</span>';
+    } else {
+      html += '<span style="color:var(--text2);font-size:12px">无销售数据</span>';
+    }
+    html += '<div class="wh-list" style="margin-top:4px;width:100%">';
     for (var k = 0; k < s.warehouses.length; k++) {
       html += '<span class="wh-item">' + escHtml(s.warehouses[k].name) + ' <span class="qty">' + s.warehouses[k].quantity + '</span></span>';
     }

@@ -549,6 +549,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 offices = size_item.get('offices', [])
                 total_qty = sum(o.get('metrics', {}).get('stockCount', 0) for o in offices)
                 
+                # 计算尺码级别订单/日均数据
+                total_orders = sum(o.get('metrics', {}).get('ordersCount', 0) for o in offices)
+                total_avg = sum(o.get('metrics', {}).get('avgOrders', 0) for o in offices)
+                turnover_days = round(total_qty / total_avg, 1) if total_avg > 0 else 0
+                
                 if total_qty == 0:
                     continue
                 
@@ -565,6 +570,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 sizes.append({
                     'techSize': size_name,
                     'totalQty': total_qty,
+                    'ordersCount': total_orders,
+                    'avgOrders': round(total_avg, 2),
+                    'turnoverDays': turnover_days,
                     'warehouses': warehouses
                 })
             
