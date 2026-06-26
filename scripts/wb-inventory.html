@@ -177,6 +177,8 @@ var configMultiplier = 1.0;
 var configLowThreshold = 25;
 var PAGE_SIZE = 15;
 var currentPage = 1;
+var sortField = 'weightedAvgOrders';
+var sortDirection = 'desc';
 
 function openSettings() {
   var modal = document.getElementById('settingsModal');
@@ -322,6 +324,19 @@ function setFilter(mode) {
   renderPage();
 }
 
+function toggleSort() {
+  if (sortField === 'weightedAvgOrders') {
+    sortDirection = sortDirection === 'desc' ? 'asc' : 'desc';
+  } else {
+    sortField = 'weightedAvgOrders';
+    sortDirection = 'desc';
+  }
+  var arrow = document.getElementById('sortArrow');
+  if (arrow) arrow.textContent = sortDirection === 'desc' ? '▼' : '▲';
+  currentPage = 1;
+  renderPage();
+}
+
 function getFilteredProducts() {
   if (!inventoryData) return [];
   var q = document.getElementById('searchInput').value.toLowerCase().trim();
@@ -340,6 +355,14 @@ function getFilteredProducts() {
       if (!match) continue;
     }
     result.push(p);
+  }
+  // 按日均订单排序
+  if (sortField === 'weightedAvgOrders') {
+    result.sort(function(a, b) {
+      var va = a.weightedAvgOrders || 0;
+      var vb = b.weightedAvgOrders || 0;
+      return sortDirection === 'desc' ? vb - va : va - vb;
+    });
   }
   return result;
 }
@@ -433,7 +456,7 @@ function renderProducts(products) {
     '<th style="text-align:right">展示价</th>' +
     '<th style="text-align:right">成本价</th>' +
     '<th style="text-align:right">库存</th>' +
-    '<th style="text-align:right">日均订单</th>' +
+    '<th style="text-align:right;cursor:pointer;user-select:none" onclick="toggleSort()" title="点击切换排序">日均订单 <span id="sortArrow">' + (sortDirection === 'desc' ? '▼' : '▲') + '</span></th>' +
     '<th style="text-align:right">周转(天)</th>' +
     '<th style="text-align:right">可售天数</th>' +
     '<th style="text-align:right">断货日期</th>' +
