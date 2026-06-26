@@ -645,6 +645,10 @@ function insertSizeRows(product, index) {
   var table = document.querySelector('.product-table tbody');
   if (!table) return;
   
+  // 先清除旧的占位行（loading或错误行）
+  var oldRows = table.querySelectorAll('.size-detail[data-parent="' + index + '"]');
+  for (var r = 0; r < oldRows.length; r++) oldRows[r].remove();
+  
   // Find the product row
   var pr = table.querySelector('.product-row[data-index="' + index + '"]');
   if (!pr) return;
