@@ -617,8 +617,28 @@ function replaceSizeError(index, msg) {
   if (!table) return;
   var loadingRow = table.querySelector('.size-detail.visible[data-parent="' + index + '"]');
   if (loadingRow) {
-    loadingRow.innerHTML = '<td colspan="12"><div class="loading-size" style="color:var(--red)">❌ ' + msg + '，<a href="#" onclick="toggleSize(' + index + ');return false" style="color:var(--accent)">点此重试</a></div></td>';
+    loadingRow.innerHTML = '<td colspan="12"><div class="loading-size" style="color:var(--red)">❌ ' + msg + '，<a href="javascript:;" onclick="retryFetchSizes(' + index + ')" style="color:var(--accent);text-decoration:underline">点此重试</a></div></td>';
   }
+}
+
+function retryFetchSizes(index) {
+  var table = document.querySelector('.product-table tbody');
+  if (!table) return;
+  // 删除旧的错误行
+  var oldRow = table.querySelector('.size-detail[data-parent="' + index + '"]');
+  if (oldRow) oldRow.remove();
+  
+  // 重新插入loading行
+  var pr = table.querySelector('.product-row[data-index="' + index + '"]');
+  if (!pr) return;
+  var loadingRow = document.createElement('tr');
+  loadingRow.className = 'size-detail visible';
+  loadingRow.setAttribute('data-parent', index);
+  loadingRow.innerHTML = '<td colspan="12"><div class="loading-size"><span class="mini-spinner"></span> 加载尺码数据中...</div></td>';
+  pr.parentNode.insertBefore(loadingRow, pr.nextSibling);
+  
+  var p = getProductByAbsIndex(index);
+  if (p) fetchSizes(p, index);
 }
 
 function insertSizeRows(product, index) {
