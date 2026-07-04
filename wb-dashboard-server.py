@@ -32,7 +32,9 @@ SESSION_TTL = 86400  # 24小时
 LOGIN_USER = 'WB'
 LOGIN_PASS = '000111'
 
-PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.html', '/wb-booking.html', '/api/wb-daily', '/api/mappings', '/api/wb-offices', '/api/send-feishu']
+WAREHOUSE_FILE = os.path.join(DATA_DIR, 'warehouses.json')
+
+PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.html', '/wb-booking.html', '/api/wb-daily', '/api/mappings', '/api/wb-offices', '/api/send-feishu', '/api/warehouses']
 
 
 def load_sessions():
@@ -166,6 +168,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_get_mappings()
         elif path == '/api/wb-offices':
             self.handle_wb_offices()
+        elif path == '/api/warehouses':
+            self.handle_get_warehouses()
         elif path == '/':
             # Root - redirect to dashboard
             self.send_redirect('/wb-dashboard.html')
@@ -231,6 +235,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_save_mappings()
         elif path == '/api/send-feishu':
             self.handle_send_feishu()
+        elif path == '/api/warehouses':
+            if not self.require_auth():
+                self.send_json({'error': 'unauthorized'}, 401)
+                return
+            self.handle_save_warehouses()
         else:
             self.send_error(404)
     
@@ -362,6 +371,30 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json({'success': False, 'error': 'HTTP ' + str(e.code) + ': ' + err_body[:200]})
         except Exception as e:
             self.send_json({'success': False, 'error': str(e)})
+    
+    def handle_get_warehouses(self):
+        """获取仓库列表"""
+        if os.path.exists(WAREHOUSE_FILE):
+            try:
+                with open(WAREHOUSE_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                self.send_json(data)
+                return
+            except:
+                pass
+        self.send_json({'warehouses': [], 'settings': {}})
+    
+    def handle_save_warehouses(self):
+        """保存仓库列表"""
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length).decode('utf-8')
+            data = json.loads(body)
+            with open(WAREHOUSE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self.send_json({'status': 'ok'})
+        except Exception as e:
+            self.send_json({'error': str(e)}, 500)
     
     def send_redirect(self, location):
         self.send_response(302)

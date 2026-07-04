@@ -754,6 +754,53 @@ function saveState() {
   }
 }
 
+// ====== Server Sync ======
+async function syncWarehousesToServer() {
+  try {
+    const payload = {
+      warehouses: state.warehouses,
+      settings: {
+        feishuWebhook: state.feishuWebhook,
+        periodicQuery: state.periodicQuery,
+        selectedWarehouses: state.selectedWarehouses
+      }
+    };
+    const resp = await fetch('/api/warehouses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await resp.json();
+    if (result.status !== 'ok') {
+      console.warn('Server sync failed:', result);
+    }
+  } catch(e) {
+    console.warn('Server sync error:', e);
+  }
+}
+
+async function loadWarehousesFromServer() {
+  try {
+    const resp = await fetch('/api/warehouses');
+    const data = await resp.json();
+    if (data && data.warehouses && Array.isArray(data.warehouses)) {
+      state.warehouses = data.warehouses;
+      if (data.settings) {
+        if (data.settings.feishuWebhook) state.feishuWebhook = data.settings.feishuWebhook;
+        if (data.settings.selectedWarehouses) state.selectedWarehouses = data.settings.selectedWarehouses;
+        if (data.settings.periodicQuery !== undefined) state.periodicQuery = data.settings.periodicQuery;
+      }
+      // Also save to localStorage as backup
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      return true;
+    }
+    return false;
+  } catch(e) {
+    console.warn('Server load failed, using localStorage:', e);
+    return false;
+  }
+}
+
 function deepMerge(target, source) {
   const result = { ...target };
   for (const key in source) {
@@ -847,6 +894,7 @@ function addWarehouse() {
     note: document.getElementById('newWarehouseNote').value.trim()
   });
   saveState();
+  syncWarehousesToServer();
   closeModal('addWarehouseModal');
   renderWarehouseManagement();
   toast('✅ 已添加仓库：' + name);
@@ -872,6 +920,7 @@ function saveEditWarehouse() {
     note: document.getElementById('editWarehouseNote').value.trim()
   };
   saveState();
+  syncWarehousesToServer();
   closeModal('editWarehouseModal');
   renderWarehouseManagement();
   toast('✅ 已更新');
@@ -885,6 +934,7 @@ function confirmDeleteWarehouse(index) {
       wi => wi < state.warehouses.length
     );
     saveState();
+    syncWarehousesToServer();
     renderWarehouseManagement();
     toast('已删除');
   }
@@ -1024,6 +1074,7 @@ function showQueryStatus(msg) {
 function togglePeriodicQuery() {
   state.periodicQuery = !state.periodicQuery;
   saveState();
+  syncWarehousesToServer();
   
   const btn = document.getElementById('periodicBtn');
   if (state.periodicQuery) {
@@ -1171,6 +1222,7 @@ function renderSettings() {
 function saveAll() {
   state.feishuWebhook = document.getElementById('feishuWebhook').value.trim();
   saveState();
+  syncWarehousesToServer();
   toast('💾 设置已保存');
 }
 
@@ -1238,8 +1290,12 @@ function pad2(n) {
 // ===========================
 // Autosave on input changes
 // ===========================
-document.addEventListener('DOMContentLoaded', function() {
-  loadState();
+document.addEventListener('DOMContentLoaded', async function() {
+  // 优先从服务器加载仓库列表
+  const loaded = await loadWarehousesFromServer();
+  if (!loaded) {
+    loadState();
+  }
   renderBooking();
   renderWarehouseManagement();
   renderSettings();
@@ -1250,6 +1306,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('feishuWebhook').addEventListener('change', function() {
     state.feishuWebhook = this.value.trim();
     saveState();
+    syncWarehousesToServer();
   });
   
   // Refresh on visibility change (user comes back)
