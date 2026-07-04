@@ -553,8 +553,7 @@ input:focus, textarea:focus, select:focus {
   <div class="header">
     <h1>📦 仓库预约 <small>Wildberries</small></h1>
     <div style="display:flex;gap:8px;align-items:center;">
-      <span style="font-size:13px;color:var(--text-secondary);" id="statusText">✓ 数据已保存</span>
-      <button class="btn btn-secondary btn-sm" onclick="saveAll()">💾 保存</button>
+
     </div>
   </div>
 
@@ -563,7 +562,7 @@ input:focus, textarea:focus, select:focus {
     <button class="tab-btn active" onclick="switchTab('booking', this)">🔍 查询监控</button>
     <button class="tab-btn" onclick="switchTab('warehouses', this)">🏭 仓库管理</button>
     <button class="tab-btn" onclick="switchTab('settings', this)">⚙️ 设置</button>
-    <button class="tab-btn" onclick="switchTab('history', this)">📜 历史记录</button>
+    <button class="tab-btn" onclick="switchTab('history', this)">📜 定时任务</button>
   </div>
 
   <!-- ============ Panel: 预约管理 ============ -->
@@ -659,7 +658,7 @@ input:focus, textarea:focus, select:focus {
 
   </div>
 
-  <!-- ============ Panel: 定时记录 ============ -->
+  <!-- ============ Panel: 定时任务 ============ -->
   <div id="panel-history" class="panel">
     <div class="card">
       <div class="card-header">
@@ -776,9 +775,8 @@ function loadState() {
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    showStatus('✓ 已保存');
   } catch(e) {
-    showStatus('✗ 保存失败', true);
+    console.warn('Save failed:', e);
   }
 }
 
@@ -850,17 +848,7 @@ function deepMerge(target, source) {
   return result;
 }
 
-let statusTimer = null;
-function showStatus(msg, isError = false) {
-  const el = document.getElementById('statusText');
-  el.textContent = msg;
-  el.style.color = isError ? 'var(--red)' : 'var(--green)';
-  clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => {
-    el.textContent = '✓ 数据已保存';
-    el.style.color = 'var(--text-secondary)';
-  }, 3000);
-}
+
 
 function toast(msg, type = 'success') {
   const el = document.createElement('div');
