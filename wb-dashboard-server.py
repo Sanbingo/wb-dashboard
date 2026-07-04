@@ -32,7 +32,7 @@ SESSION_TTL = 86400  # 24小时
 LOGIN_USER = 'WB'
 LOGIN_PASS = '000111'
 
-PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/api/wb-daily', '/api/mappings']
+PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.html', '/wb-booking.html', '/api/wb-daily', '/api/mappings', '/api/wb-offices', '/api/send-feishu']
 
 
 def load_sessions():
@@ -164,6 +164,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_api(params)
         elif path == '/api/mappings':
             self.handle_get_mappings()
+        elif path == '/api/wb-offices':
+            self.handle_wb_offices()
         elif path == '/':
             # Root - redirect to dashboard
             self.send_redirect('/wb-dashboard.html')
@@ -227,6 +229,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'unauthorized'}, 401)
                 return
             self.handle_save_mappings()
+        elif path == '/api/send-feishu':
+            self.handle_send_feishu()
         else:
             self.send_error(404)
     
@@ -278,6 +282,87 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json({'error': str(e)})
     
+    def handle_wb_offices(self):
+        """获取WB仓库/办公室列表"""
+        import urllib.request
+        import ssl as _ssl
+        try:
+            # 从config.py获取token
+            config_path = os.path.join(WORKSPACE, 'config.py')
+            cfg_globals = {}
+            with open(config_path) as f:
+                exec(f.read(), cfg_globals)
+            token_file = cfg_globals.get('WB_TOKEN_FILE', '/opt/wb-scripts/secrets/wb-api.json')
+            with open(token_file) as f:
+                cfg = json.load(f)
+            token = cfg['jwt'].strip()
+            
+            ctx = _ssl._create_unverified_context()
+            
+            # 获取全部办公室/仓库（WB API一次返回全部）
+            req = urllib.request.Request(
+                'https://marketplace-api.wildberries.ru/api/v3/offices',
+                method='GET')
+            req.add_header('Authorization', token)
+            resp = urllib.request.urlopen(req, timeout=15, context=ctx)
+            offices = json.loads(resp.read().decode('utf-8'))
+            
+            self.send_json({'offices': offices, 'total': len(offices)})
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode() if hasattr(e, 'read') else str(e)
+            self.send_json({'error': 'WB API error: ' + str(e.code) + ' ' + err_body[:200]}, 500)
+        except Exception as e:
+            self.send_json({'error': str(e)}, 500)
+    
+    def handle_send_feishu(self):
+        """通过飞书Webhook发送消息"""
+        import urllib.request
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length).decode('utf-8')
+            data = json.loads(body)
+            
+            webhook = data.get('webhook', '').strip()
+            title = data.get('title', 'WB 通知')
+            content = data.get('content', '')
+            
+            if not webhook:
+                self.send_json({'success': False, 'error': 'webhook为空'})
+                return
+            
+            # 构建飞书消息 (支持 text 和 interactive 两种格式)
+            msg_data = {
+                'msg_type': 'interactive',
+                'card': {
+                    'header': {
+                        'title': {'tag': 'plain_text', 'content': title},
+                        'template': 'blue'
+                    },
+                    'elements': [
+                        {
+                            'tag': 'markdown',
+                            'content': content
+                        }
+                    ]
+                }
+            }
+            
+            payload = json.dumps(msg_data).encode('utf-8')
+            req = urllib.request.Request(webhook, data=payload, method='POST')
+            req.add_header('Content-Type', 'application/json; charset=utf-8')
+            resp = urllib.request.urlopen(req, timeout=10)
+            result = json.loads(resp.read().decode('utf-8'))
+            
+            if result.get('code') == 0:
+                self.send_json({'success': True})
+            else:
+                self.send_json({'success': False, 'error': result.get('msg', '发送失败')})
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode() if hasattr(e, 'read') else str(e)
+            self.send_json({'success': False, 'error': 'HTTP ' + str(e.code) + ': ' + err_body[:200]})
+        except Exception as e:
+            self.send_json({'success': False, 'error': str(e)})
+    
     def send_redirect(self, location):
         self.send_response(302)
         self.send_header('Location', location)
@@ -316,7 +401,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
     
     def log_message(self, format, *args):
         ts = datetime.now().strftime('%H:%M:%S')
-        print(f'[{ts}] {args[0]} {args[1]} {args[2]}')
+        if len(args) >= 3:
+            print(f'[{ts}] {args[0]} {args[1]} {args[2]}')
+        elif len(args) >= 1:
+            print(f'[{ts}] {" ".join(str(a) for a in args)}')
+        else:
+            print(f'[{ts}] (empty log)')
 
 
 def main():

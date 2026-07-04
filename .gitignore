@@ -42,6 +42,20 @@ search_8795.py
 xiaoli/
 ozon/
 
+# Data caches
+data/
+backups/
+
+# Temp ad scripts
+wb-ad-pause-*.py
+wb-ad-start-*.py
+scripts/wb-ad-pause-*.py
+scripts/wb-ad-start-*.py
+
+# Temp / generated files
+tmp/
+/tmp/add_sidebar.py
+
 # Cron/logs
 scripts/logs/
 scripts/monitor.py

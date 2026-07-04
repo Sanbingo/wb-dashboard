@@ -28,9 +28,168 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
-  padding: 20px;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
 }
-.container { max-width: 1400px; margin: 0 auto; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+/* ====== Sidebar ====== */
+:root {
+  --sidebar-w: 220px;
+  --sidebar-collapsed-w: 56px;
+  --sidebar-bg: #1a1a2e;
+  --sidebar-hover: #16213e;
+  --sidebar-active: #0f3460;
+  --sidebar-text: #a8a8c8;
+  --sidebar-text-active: #ffffff;
+  --sidebar-accent: #6c5ce7;
+}
+.sidebar {
+  position: fixed;
+  top: 0; left: 0;
+  width: var(--sidebar-w);
+  height: 100vh;
+  background: var(--sidebar-bg);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sidebar.collapsed { width: var(--sidebar-collapsed-w); }
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  min-height: 64px;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sidebar-logo .logo-icon { font-size: 24px; flex-shrink: 0; }
+.sidebar-logo .logo-text { 
+  transition: opacity 0.2s;
+}
+.sidebar.collapsed .sidebar-logo .logo-text { 
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+}
+.sidebar-toggle {
+  background: none;
+  border: none;
+  color: var(--sidebar-text);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar-toggle:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+}
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 8px;
+  overflow-y: auto;
+}
+.sidebar-nav::-webkit-scrollbar { width: 3px; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--sidebar-text);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+.nav-item:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text-active);
+}
+.nav-item.active {
+  background: var(--sidebar-active);
+  color: var(--sidebar-text-active);
+  border-left: 3px solid var(--sidebar-accent);
+}
+.nav-item .nav-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.nav-item .nav-label {
+  transition: opacity 0.2s;
+}
+.sidebar.collapsed .nav-item .nav-label {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+}
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 10px 0;
+}
+.sidebar.collapsed .nav-item.active {
+  border-left: none;
+  border-left: 3px solid transparent;
+}
+.sidebar-footer {
+  padding: 12px 8px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.main-content {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  min-height: 100vh;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sidebar.collapsed + .main-content,
+.main-content.sidebar-collapsed {
+  margin-left: var(--sidebar-collapsed-w);
+}
+
+/* Responsive sidebar */
+@media (max-width: 768px) {
+  .sidebar { width: var(--sidebar-collapsed-w); }
+  .sidebar .sidebar-logo .logo-text,
+  .sidebar .nav-item .nav-label { opacity: 0; width: 0; overflow: hidden; }
+  .sidebar .nav-item { justify-content: center; padding: 10px 0; }
+  .main-content { margin-left: var(--sidebar-collapsed-w); }
+  .sidebar.expanded {
+    width: var(--sidebar-w);
+    box-shadow: 4px 0 20px rgba(0,0,0,0.3);
+  }
+  .sidebar.expanded .sidebar-logo .logo-text,
+  .sidebar.expanded .nav-item .nav-label { opacity: 1; width: auto; overflow: visible; }
+  .sidebar.expanded .nav-item { justify-content: flex-start; padding: 10px 12px; }
+}
 
 /* Header */
 .header {
@@ -306,7 +465,42 @@ tr:hover td { background: #f5f5f5; }
 </head>
 <body>
 
+<!-- Sidebar -->
+<div class="sidebar collapsed" id="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">
+      <span class="logo-icon">🦊</span>
+      <span class="logo-text">WB 工具集</span>
+    </div>
+    <button class="sidebar-toggle" onclick="toggleSidebar()" title="折叠侧栏">☰</button>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="wb-dashboard.html" class="nav-item active" data-page="dashboard">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">销售日报</span>
+    </a>
+    <a href="wb-inventory.html" class="nav-item" data-page="inventory">
+      <span class="nav-icon">📦</span>
+      <span class="nav-label">库存分析</span>
+    </a>
+    <a href="wb-booking.html" class="nav-item" data-page="booking">
+      <span class="nav-icon">📅</span>
+      <span class="nav-label">仓库预约</span>
+    </a>
+    <a href="wb-settings.html" class="nav-item" data-page="settings">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">设置</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="#" onclick="logout()" class="nav-item" style="margin-bottom:0">
+      <span class="nav-icon">⏻</span>
+      <span class="nav-label">退出</span>
+    </a>
+  </div>
+</div>
 
+<div class="main-content sidebar-collapsed" id="mainContent">
 <div class="container">
   <div class="header">
     <h1>📊 WB 销售日报 <small id="reportDate"></small></h1>
@@ -318,8 +512,6 @@ tr:hover td { background: #f5f5f5; }
       </span>
       <button class="btn btn-outline" id="loadBtn" onclick="loadData()">📥 查询</button>
       <button class="btn btn-outline" onclick="loadData('yesterday')">📅 昨天</button>
-      <a href="wb-settings.html" class="settings-link" title="设置">⚙️</a>
-      <a href="#" onclick="logout()" class="settings-link" title="退出登录" style="font-size:16px">⏻</a>
     </div>
   </div>
 
@@ -368,7 +560,6 @@ tr:hover td { background: #f5f5f5; }
     </h3>
     <div id="tableContainer"><div class="status-bar">← 选择日期后点击"加载"</div></div>
   </div>
-</div>
 
 <script>
 // ====== State ======
@@ -925,6 +1116,42 @@ function logout() {
   document.cookie = 'wb_session=; Path=/; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
   window.location.href = '/login.html';
 }
+
+// ====== Sidebar ======
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const mainContent = document.getElementById('mainContent');
+  sidebar.classList.toggle('collapsed');
+  mainContent.classList.toggle('sidebar-collapsed');
+  const isCollapsed = sidebar.classList.contains('collapsed');
+  localStorage.setItem('wb_sidebar_expanded', isCollapsed ? 'false' : 'true');
+}
+
+function initSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const mainContent = document.getElementById('mainContent');
+  // 默认已折叠，检查是否需要展开
+  const expanded = localStorage.getItem('wb_sidebar_expanded') === 'true';
+  if (expanded) {
+    sidebar.classList.remove('collapsed');
+    mainContent.classList.remove('sidebar-collapsed');
+  }
+  
+  // Mobile: toggle expanded on sidebar-toggle
+  const isMobile = window.innerWidth <= 768;
+  if (isMobile) {
+    document.querySelector('.sidebar-toggle').addEventListener('click', function() {
+      const s = document.getElementById('sidebar');
+      s.classList.toggle('expanded');
+    });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initSidebar);
 </script>
+
+</div><!-- end container -->
+</div><!-- end main-content -->
+
 </body>
 </html>

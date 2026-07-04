@@ -131,6 +131,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
       </div>
     </div>
     <button class="btn btn-primary" id="queryBtn" onclick="doQuery()">🔍 查询</button>
+    <button class="btn" onclick="exportExcel()" style="margin-left:auto">📥 Excel</button>
     <input class="search-input" id="searchInput" placeholder="🔍 搜索名称、nmId..." oninput="onSearchInput()" style="flex:none">
     <label style="color:var(--text2);font-size:13px;display:flex;align-items:center;gap:4px">
       <input type="checkbox" id="hideNoStock" onchange="onSearchInput()"> 隐藏无货
@@ -172,6 +173,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 
 <div class="status-msg" id="statusMsg"></div>
 
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
 <script>
 var inventoryData = null;
 var configLeadTime = 25;
@@ -769,6 +771,94 @@ function showStatus(text, type) {
   el.textContent = text;
   el.className = 'status-msg ' + type + ' show';
   setTimeout(function() { el.className = ''; }, 2500);
+}
+
+// ====== Excel 导出 ======
+function exportExcel() {
+  var filtered = getFilteredProducts();
+  if (!filtered || filtered.length === 0) {
+    showStatus('没有数据可导出', 'error');
+    return;
+  }
+  
+  showStatus('正在生成Excel...', 'success');
+  
+  // 按当前排序
+  if (sortField === 'weightedAvgOrders') {
+    filtered.sort(function(a, b) {
+      var va = a.weightedAvgOrders || 0;
+      var vb = b.weightedAvgOrders || 0;
+      return sortDirection === 'desc' ? vb - va : va - vb;
+    });
+  }
+  
+  // 构建表格数据
+  var rows = [];
+  
+  // 列头
+  var headers = [
+    '序号', 'nmId', '商品名', '供应商代码', '中文名', '展示价(₽)', '成本价(₽)',
+    '库存', '7日订单', '15日订单', '30日订单', '日均订单',
+    '周转(天)', '可售天数', '断货日期', '补货日期', '补货量', '状态'
+  ];
+  rows.push(headers);
+  
+  for (var i = 0; i < filtered.length; i++) {
+    var p = filtered[i];
+    var status = p.totalQty === 0 ? '缺货' : (p.lowStock ? '低库存' : '正常');
+    rows.push([
+      i + 1,
+      p.nmId,
+      p.displayName || '',
+      p.vendorCode || '',
+      p.chineseName || '',
+      p.displayPrice || 0,
+      p.costPrice || '',
+      p.totalQty || 0,
+      p.orders7d || 0,
+      p.orders15d || 0,
+      p.orders30d || 0,
+      p.weightedAvgOrders ? Math.round(p.weightedAvgOrders * 100) / 100 : 0,
+      p.turnoverDays || 0,
+      p.canSellDays || 0,
+      p.predictedStockoutDate || '',
+      p.predictedReorderDate || '',
+      p.predictedRestockQty ? Math.round(p.predictedRestockQty) : 0,
+      status
+    ]);
+  }
+  
+  // 生成 XLSX
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  
+  // 设置列宽
+  ws['!cols'] = [
+    { wch: 5 },  // 序号
+    { wch: 10 }, // nmId
+    { wch: 40 }, // 商品名
+    { wch: 20 }, // 供应商代码
+    { wch: 20 }, // 中文名
+    { wch: 12 }, // 展示价
+    { wch: 12 }, // 成本价
+    { wch: 8 },  // 库存
+    { wch: 10 }, // 7日订单
+    { wch: 11 }, // 15日订单
+    { wch: 11 }, // 30日订单
+    { wch: 10 }, // 日均订单
+    { wch: 9 },  // 周转
+    { wch: 9 },  // 可售天数
+    { wch: 10 }, // 断货日期
+    { wch: 10 }, // 补货日期
+    { wch: 8 },  // 补货量
+    { wch: 8 }   // 状态
+  ];
+  
+  XLSX.utils.book_append_sheet(wb, ws, '库存分析');
+  
+  var fileName = '库存分析_' + (inventoryData.date || new Date().toISOString().slice(0,10)) + '.xlsx';
+  XLSX.writeFile(wb, fileName);
+  showStatus('✅ 已导出 ' + filtered.length + ' 条数据', 'success');
 }
 
 document.addEventListener('DOMContentLoaded', function() { loadInventory(); });
