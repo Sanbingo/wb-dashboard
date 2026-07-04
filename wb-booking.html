@@ -584,6 +584,10 @@ input:focus, textarea:focus, select:focus {
           <span style="font-size:12px;color:var(--text-secondary);margin-left:4px;">全选</span>
         </div>
       </div>
+      <div class="form-group" style="margin-bottom:12px;">
+        <label>查询日期</label>
+        <input type="date" id="queryDate">
+      </div>
       <div id="bookingWarehouseList" class="warehouse-list">
         <div class="empty-state">
           <div class="icon">🏭</div>
@@ -1026,6 +1030,14 @@ function renderBooking() {
     `;
   }).join('');
   
+  // 默认日期设置为明天
+  const dateInput = document.getElementById('queryDate');
+  if (dateInput && !dateInput.value) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    dateInput.value = tomorrow.toISOString().split('T')[0];
+  }
+  
   // Restore periodic query button state
   const btn = document.getElementById('periodicBtn');
   if (state.periodicQuery && btn) {
@@ -1036,9 +1048,31 @@ function renderBooking() {
   }
 }
 
+function toggleWarehouseSelection(index) {
+  const idx = state.selectedWarehouses.indexOf(index);
+  if (idx >= 0) {
+    state.selectedWarehouses.splice(idx, 1);
+  } else {
+    state.selectedWarehouses.push(index);
+  }
+  renderBooking();
+  saveState();
+}
+
+function toggleAll() {
+  const checked = document.getElementById('selectAll').checked;
+  if (checked) {
+    state.selectedWarehouses = state.warehouses.map((_, i) => i);
+  } else {
+    state.selectedWarehouses = [];
+  }
+  renderBooking();
+  saveState();
+}
+
 
 // ===========================
-// Execute Booking
+// Query Operations
 // ===========================
 async function startQuery() {
   const selected = state.selectedWarehouses;
@@ -1048,10 +1082,16 @@ async function startQuery() {
     return;
   }
   
+  const queryDate = document.getElementById('queryDate').value;
+  if (!queryDate) {
+    toast('请选择查询日期', 'error');
+    return;
+  }
+  
   const warehouseNames = selected.map(i => state.warehouses[i]?.name).filter(Boolean);
   
   // Show loading
-  showQueryStatus('⏳ 正在查询仓库状态...');
+  showQueryStatus('⏳ 正在查询 ' + queryDate + ' 的仓库状态...');
   document.getElementById('queryResults').style.display = 'none';
   
   try {
@@ -1073,32 +1113,39 @@ async function startQuery() {
       if (!w) return null;
       // Find matching office(s) from WB API
       const matches = offices.filter(o => 
-        w.name === o.name || (w.id && w.id == o.id) || o.name.includes(w.name) || w.name.includes(o.name)
+        w.name === o.name || o.name.includes(w.name) || w.name.includes(o.name)
       );
+      // Check delivery type compatibility
+      const deliveryMap = {'箱子': 1, '托盘': 3, '箱子和托盘': null};
+      const dt = deliveryMap[w.deliveryType || '箱子'];
+      const compatible = dt ? matches.filter(o => o.cargoType === dt || o.cargoType === 3) : matches;
       return {
         warehouse: w,
         matches: matches,
-        matchCount: matches.length
+        matchCount: matches.length,
+        compatibleMatches: compatible,
+        compatibleCount: compatible.length
       };
     }).filter(Boolean);
     
     // Display results
-    renderQueryResults(results, warehouseNames);
+    renderQueryResults(results, warehouseNames, queryDate);
     
     // Add to history
     state.history.push({
       type: 'query',
+      date: queryDate,
       warehouses: warehouseNames,
       timestamp: new Date().toISOString(),
       hasAvailable: results.some(r => r.matchCount > 0)
     });
     saveState();
     
-    // Send Feishu notification if available
+    // Send Feishu notification if any found
     const availableWarehouses = results.filter(r => r.matchCount > 0);
     if (availableWarehouses.length > 0 && state.feishuWebhook) {
       const names = availableWarehouses.map(r => r.warehouse.name).join('、');
-      await sendFeishuNotification('✅ 发现可用的仓库', 
+      await sendFeishuNotification('✅ ' + queryDate + ' 可预约仓库', 
         `🏭 以下仓库在 WB 系统中已就绪：${names}\n📊 共查询 ${warehouseNames.length} 个仓库，其中 ${availableWarehouses.length} 个可用`);
       toast('✅ 已通知飞书');
     }
@@ -1158,12 +1205,12 @@ function clearPeriodicQuery() {
   }
 }
 
-function renderQueryResults(results, warehouseNames) {
+function renderQueryResults(results, warehouseNames, queryDate) {
   const container = document.getElementById('queryResultContent');
   const timeEl = document.getElementById('queryTime');
   const resultsEl = document.getElementById('queryResults');
   
-  timeEl.textContent = new Date().toLocaleString('zh-CN', { hour12: false });
+  timeEl.textContent = (queryDate || '') + ' ' + new Date().toLocaleString('zh-CN', { hour12: false });
   resultsEl.style.display = 'block';
   
   const available = results.filter(r => r.matchCount > 0);
@@ -1171,14 +1218,19 @@ function renderQueryResults(results, warehouseNames) {
   
   let html = '';
   
+  // Date header
+  html += `<div style="text-align:center;margin-bottom:16px;padding:8px;background:var(--primary-bg);border-radius:8px;font-size:16px;font-weight:600;color:var(--primary);">
+    📅 ${queryDate || '未选择日期'}
+  </div>`;
+  
   // Summary
   html += `<div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
     <div style="background:var(--green-bg);padding:10px 16px;border-radius:8px;flex:1;min-width:120px;">
-      <div style="font-size:12px;color:var(--green);">✅ 可用仓库</div>
+      <div style="font-size:12px;color:var(--green);">✅ 系统中存在</div>
       <div style="font-size:24px;font-weight:700;color:var(--green);">${available.length}</div>
     </div>
     <div style="background:var(--red-bg);padding:10px 16px;border-radius:8px;flex:1;min-width:120px;">
-      <div style="font-size:12px;color:var(--red);">❌ 不可用</div>
+      <div style="font-size:12px;color:var(--red);">❌ 未匹配到</div>
       <div style="font-size:24px;font-weight:700;color:var(--red);">${unavailable.length}</div>
     </div>
     <div style="background:var(--primary-bg);padding:10px 16px;border-radius:8px;flex:1;min-width:120px;">
@@ -1192,13 +1244,29 @@ function renderQueryResults(results, warehouseNames) {
   
   results.forEach(r => {
     const isAvailable = r.matchCount > 0;
+    const isCompatible = r.compatibleCount > 0;
+    let statusText = '';
+    let statusColor = '';
+    if (isAvailable) {
+      if (isCompatible) {
+        statusText = '✓ 配送方式匹配 | ' + r.matches.map(m => m.name).join(', ');
+        statusColor = 'var(--green)';
+      } else {
+        statusText = '⚠ 找到仓库但配送方式不匹配';
+        statusColor = 'var(--orange)';
+      }
+    } else {
+      statusText = 'WB 系统中未匹配到该仓库';
+      statusColor = 'var(--text-muted)';
+    }
+    
     html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;border-radius:8px;background:${isAvailable ? 'var(--green-bg)' : 'var(--surface2)'};">
-      <span style="font-size:18px;">${isAvailable ? '✅' : '❌'}</span>
+      <span style="font-size:18px;">${isAvailable ? (isCompatible ? '✅' : '⚠️') : '❌'}</span>
       <div style="flex:1;">
-        <div style="font-weight:500;">${escapeHtml(r.warehouse.name)}</div>
-        ${isAvailable ? '<div style="font-size:12px;color:var(--green);">✓ 已在 WB 系统中就绪</div>' : '<div style="font-size:12px;color:var(--text-muted);">WB 系统中未匹配到该仓库</div>'}
+        <div style="font-weight:500;">${escapeHtml(r.warehouse.name)} <span style="font-size:11px;color:var(--text-muted);">${escapeHtml(r.warehouse.deliveryType || '箱子')}</span></div>
+        <div style="font-size:12px;color:${statusColor};">${statusText}</div>
       </div>
-      ${isAvailable ? `<span style="font-size:12px;background:var(--green);color:white;padding:2px 8px;border-radius:4px;">${r.matchCount} 个匹配</span>` : ''}
+      ${isAvailable ? `<span style="font-size:12px;background:var(--green);color:white;padding:2px 8px;border-radius:4px;">${r.matches.length} 个匹配</span>` : ''}
     </div>`;
   });
   
