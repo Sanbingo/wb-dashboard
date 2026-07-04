@@ -681,12 +681,25 @@ input:focus, textarea:focus, select:focus {
       <input type="text" id="newWarehouseName" placeholder="例如：Коледино, Электросталь, Чехов..." autofocus>
     </div>
     <div class="form-group">
-      <label>WB 仓库 ID（可选，用于 API 操作）</label>
-      <input type="text" id="newWarehouseId" placeholder="留空则仅作标记用">
+      <label>配送方式</label>
+      <div style="display:flex;gap:12px;padding:4px 0;">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="deliveryType" value="箱子" checked>
+          <span>箱子</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="deliveryType" value="托盘">
+          <span>托盘</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="deliveryType" value="箱子和托盘">
+          <span>箱子和托盘</span>
+        </label>
+      </div>
     </div>
     <div class="form-group">
-      <label>备注（可选）</label>
-      <input type="text" id="newWarehouseNote" placeholder="例如：FBO仓库、大件仓库等">
+      <label>仓库地址</label>
+      <input type="text" id="newWarehouseAddress" placeholder="例如：Московская область, г. Коледино">
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('addWarehouseModal')">取消</button>
@@ -704,12 +717,25 @@ input:focus, textarea:focus, select:focus {
       <input type="text" id="editWarehouseName">
     </div>
     <div class="form-group">
-      <label>WB 仓库 ID</label>
-      <input type="text" id="editWarehouseId">
+      <label>配送方式</label>
+      <div style="display:flex;gap:12px;padding:4px 0;">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="editDeliveryType" value="箱子">
+          <span>箱子</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="editDeliveryType" value="托盘">
+          <span>托盘</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="editDeliveryType" value="箱子和托盘">
+          <span>箱子和托盘</span>
+        </label>
+      </div>
     </div>
     <div class="form-group">
-      <label>备注</label>
-      <input type="text" id="editWarehouseNote">
+      <label>仓库地址</label>
+      <input type="text" id="editWarehouseAddress">
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('editWarehouseModal')">取消</button>
@@ -784,7 +810,7 @@ async function loadWarehousesFromServer() {
     const resp = await fetch('/api/warehouses');
     const data = await resp.json();
     if (data && data.warehouses && Array.isArray(data.warehouses)) {
-      state.warehouses = data.warehouses;
+      state.warehouses = data.warehouses.map(migrateWarehouse);
       if (data.settings) {
         if (data.settings.feishuWebhook) state.feishuWebhook = data.settings.feishuWebhook;
         if (data.settings.selectedWarehouses) state.selectedWarehouses = data.settings.selectedWarehouses;
@@ -799,6 +825,15 @@ async function loadWarehousesFromServer() {
     console.warn('Server load failed, using localStorage:', e);
     return false;
   }
+
+}
+
+function migrateWarehouse(w) {
+  // 兼容旧数据格式 {name, id, note} → {name, deliveryType, address}
+  if (w.id !== undefined && w.deliveryType === undefined) {
+    return { name: w.name, deliveryType: '箱子', address: w.note || w.address || '' };
+  }
+  return { name: w.name, deliveryType: w.deliveryType || '箱子', address: w.address || '' };
 }
 
 function deepMerge(target, source) {
@@ -866,7 +901,10 @@ function renderWarehouseManagement() {
     <div class="warehouse-item">
       <div class="warehouse-info">
         <div class="warehouse-name">🏭 ${escapeHtml(w.name)}</div>
-        <div class="warehouse-status">${w.id ? 'ID: ' + escapeHtml(w.id) : ''}${w.note ? ' | ' + escapeHtml(w.note) : ''}</div>
+        <div class="warehouse-status">
+          ${w.deliveryType ? '<span class="badge badge-blue">' + escapeHtml(w.deliveryType) + '</span>' : ''}
+          ${w.address ? '📍 ' + escapeHtml(w.address) : ''}
+        </div>
       </div>
       <div class="warehouse-actions">
         <button class="btn btn-secondary btn-sm btn-icon" onclick="editWarehouse(${i})" title="编辑">✏️</button>
@@ -879,8 +917,11 @@ function renderWarehouseManagement() {
 function showAddWarehouseModal() {
   document.getElementById('addWarehouseModal').classList.add('active');
   document.getElementById('newWarehouseName').value = '';
-  document.getElementById('newWarehouseId').value = '';
-  document.getElementById('newWarehouseNote').value = '';
+  document.getElementById('newWarehouseAddress').value = '';
+  // 默认选中箱子
+  document.querySelectorAll('input[name="deliveryType"]').forEach(r => {
+    r.checked = r.value === '箱子';
+  });
   setTimeout(() => document.getElementById('newWarehouseName').focus(), 100);
 }
 
@@ -888,10 +929,12 @@ function addWarehouse() {
   const name = document.getElementById('newWarehouseName').value.trim();
   if (!name) { toast('请输入仓库名称', 'error'); return; }
   
+  const deliveryType = document.querySelector('input[name="deliveryType"]:checked');
+  
   state.warehouses.push({
     name,
-    id: document.getElementById('newWarehouseId').value.trim(),
-    note: document.getElementById('newWarehouseNote').value.trim()
+    deliveryType: deliveryType ? deliveryType.value : '箱子',
+    address: document.getElementById('newWarehouseAddress').value.trim()
   });
   saveState();
   syncWarehousesToServer();
@@ -903,9 +946,12 @@ function addWarehouse() {
 function editWarehouse(index) {
   const w = state.warehouses[index];
   document.getElementById('editWarehouseName').value = w.name;
-  document.getElementById('editWarehouseId').value = w.id || '';
-  document.getElementById('editWarehouseNote').value = w.note || '';
+  document.getElementById('editWarehouseAddress').value = w.address || '';
   document.getElementById('editWarehouseIndex').value = index;
+  // 设置配送方式
+  document.querySelectorAll('input[name="editDeliveryType"]').forEach(r => {
+    r.checked = r.value === (w.deliveryType || '箱子');
+  });
   document.getElementById('editWarehouseModal').classList.add('active');
 }
 
@@ -914,10 +960,12 @@ function saveEditWarehouse() {
   const name = document.getElementById('editWarehouseName').value.trim();
   if (!name) { toast('请输入仓库名称', 'error'); return; }
   
+  const deliveryType = document.querySelector('input[name="editDeliveryType"]:checked');
+  
   state.warehouses[index] = {
     name,
-    id: document.getElementById('editWarehouseId').value.trim(),
-    note: document.getElementById('editWarehouseNote').value.trim()
+    deliveryType: deliveryType ? deliveryType.value : '箱子',
+    address: document.getElementById('editWarehouseAddress').value.trim()
   };
   saveState();
   syncWarehousesToServer();
