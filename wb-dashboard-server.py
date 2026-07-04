@@ -33,8 +33,9 @@ LOGIN_USER = 'WB'
 LOGIN_PASS = '000111'
 
 WAREHOUSE_FILE = os.path.join(DATA_DIR, 'warehouses.json')
+TASKS_FILE = os.path.join(DATA_DIR, 'tasks.json')
 
-PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.html', '/wb-booking.html', '/api/wb-daily', '/api/mappings', '/api/wb-offices', '/api/send-feishu', '/api/warehouses']
+PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.html', '/wb-booking.html', '/api/wb-daily', '/api/mappings', '/api/wb-offices', '/api/send-feishu', '/api/warehouses', '/api/tasks']
 
 
 def load_sessions():
@@ -170,6 +171,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_wb_offices()
         elif path == '/api/warehouses':
             self.handle_get_warehouses()
+        elif path == '/api/tasks':
+            self.handle_get_tasks()
         elif path == '/':
             # Root - redirect to dashboard
             self.send_redirect('/wb-dashboard.html')
@@ -240,6 +243,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'unauthorized'}, 401)
                 return
             self.handle_save_warehouses()
+        elif path == '/api/tasks':
+            if not self.require_auth():
+                self.send_json({'error': 'unauthorized'}, 401)
+                return
+            self.handle_create_task()
         else:
             self.send_error(404)
     
@@ -393,6 +401,146 @@ class DashboardHandler(BaseHTTPRequestHandler):
             with open(WAREHOUSE_FILE, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             self.send_json({'status': 'ok'})
+        except Exception as e:
+            self.send_json({'error': str(e)}, 500)
+    
+    def handle_get_tasks(self):
+        """获取定时任务列表"""
+        if os.path.exists(TASKS_FILE):
+            try:
+                with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                self.send_json(data)
+                return
+            except:
+                pass
+        self.send_json({'tasks': []})
+    
+    def handle_create_task(self):
+        """创建定时任务"""
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length).decode('utf-8')
+            data = json.loads(body)
+            
+            # 加载已有任务
+            tasks_data = {'tasks': []}
+            if os.path.exists(TASKS_FILE):
+                try:
+                    with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                        tasks_data = json.load(f)
+                except:
+                    pass
+            
+            # 检查是否已存在相同任务（相同日期+相同仓库列表）
+            new_warehouses = sorted(data.get('warehouses', []))
+            new_date = data.get('date', '')
+            for t in tasks_data.get('tasks', []):
+                if t.get('date') == new_date and sorted(t.get('warehouses', [])) == new_warehouses:
+                    self.send_json({'status': 'duplicate', 'task': t})
+                    return
+            
+            # 创建新任务
+            task = {
+                'id': str(uuid.uuid4())[:8],
+                'warehouses': data.get('warehouses', []),
+                'warehouseNames': data.get('warehouseNames', []),
+                'date': new_date,
+                'deliveryType': data.get('deliveryType', '箱子'),
+                'enabled': True,
+                'createdAt': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'lastRunAt': None,
+            }
+            tasks_data['tasks'].append(task)
+            
+            with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(tasks_data, f, ensure_ascii=False, indent=2)
+            
+            self.send_json({'status': 'ok', 'task': task})
+        except Exception as e:
+            self.send_json({'error': str(e)}, 500)
+    
+    def do_DELETE(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        params = urllib.parse.parse_qs(parsed.query)
+        
+        if not self.require_auth():
+            self.send_json({'error': 'unauthorized'}, 401)
+            return
+        
+        if path == '/api/tasks':
+            task_id = params.get('id', [None])[0]
+            if not task_id:
+                self.send_json({'error': 'task id required'}, 400)
+                return
+            self.handle_delete_task(task_id)
+        else:
+            self.send_error(404)
+    
+    def do_PUT(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        
+        if not self.require_auth():
+            self.send_json({'error': 'unauthorized'}, 401)
+            return
+        
+        if path == '/api/tasks':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(length).decode('utf-8')
+                data = json.loads(body)
+                action = data.get('action', '')
+                task_id = data.get('id', '')
+                if not task_id:
+                    self.send_json({'error': 'task id required'}, 400)
+                    return
+                self.handle_update_task(task_id, action)
+            except Exception as e:
+                self.send_json({'error': str(e)}, 500)
+        else:
+            self.send_error(404)
+    
+    def handle_delete_task(self, task_id):
+        """删除定时任务"""
+        try:
+            tasks_data = {'tasks': []}
+            if os.path.exists(TASKS_FILE):
+                with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                    tasks_data = json.load(f)
+            
+            tasks_data['tasks'] = [t for t in tasks_data.get('tasks', []) if t.get('id') != task_id]
+            
+            with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(tasks_data, f, ensure_ascii=False, indent=2)
+            
+            self.send_json({'status': 'ok'})
+        except Exception as e:
+            self.send_json({'error': str(e)}, 500)
+    
+    def handle_update_task(self, task_id, action):
+        """更新定时任务（启用/暂停）"""
+        try:
+            tasks_data = {'tasks': []}
+            if os.path.exists(TASKS_FILE):
+                with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                    tasks_data = json.load(f)
+            
+            found = False
+            for t in tasks_data.get('tasks', []):
+                if t.get('id') == task_id:
+                    if action == 'toggle':
+                        t['enabled'] = not t.get('enabled', True)
+                    found = True
+                    break
+            
+            if found:
+                with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(tasks_data, f, ensure_ascii=False, indent=2)
+                self.send_json({'status': 'ok'})
+            else:
+                self.send_json({'error': 'task not found'}, 404)
         except Exception as e:
             self.send_json({'error': str(e)}, 500)
     

@@ -601,7 +601,7 @@ input:focus, textarea:focus, select:focus {
       <button class="btn btn-primary" style="flex:1;padding:14px;font-size:16px;justify-content:center;" onclick="startQuery()">
         🚀 开始查询
       </button>
-      <button class="btn btn-secondary" id="periodicBtn" style="flex:1;padding:14px;font-size:16px;justify-content:center;" onclick="togglePeriodicQuery()">
+      <button class="btn btn-secondary" id="periodicBtn" style="flex:1;padding:14px;font-size:16px;justify-content:center;" onclick="createTimedTask()">
         ⏱ 定时查询
       </button>
     </div>
@@ -659,17 +659,16 @@ input:focus, textarea:focus, select:focus {
 
   </div>
 
-  <!-- ============ Panel: 历史记录 ============ -->
+  <!-- ============ Panel: 定时记录 ============ -->
   <div id="panel-history" class="panel">
     <div class="card">
       <div class="card-header">
-        <div class="card-title">📜 预约记录</div>
-        <button class="btn btn-secondary btn-sm" onclick="clearHistory()">🗑️ 清空</button>
+        <div class="card-title">📜 定时任务</div>
       </div>
-      <div id="historyList">
+      <div id="taskList">
         <div class="empty-state">
-          <div class="icon">📭</div>
-          <p>暂无预约记录</p>
+          <div class="icon">⏱</div>
+          <p>暂无定时任务，在「查询监控」中选择仓库和日期后点击「定时查询」创建</p>
         </div>
       </div>
     </div>
@@ -759,7 +758,6 @@ let state = {
   warehouses: [],
   selectedWarehouses: [],
   feishuWebhook: '',
-  periodicQuery: false,
   history: []
 };
 
@@ -791,7 +789,7 @@ async function syncWarehousesToServer() {
       warehouses: state.warehouses,
       settings: {
         feishuWebhook: state.feishuWebhook,
-        periodicQuery: state.periodicQuery,
+
         selectedWarehouses: state.selectedWarehouses
       }
     };
@@ -818,7 +816,7 @@ async function loadWarehousesFromServer() {
       if (data.settings) {
         if (data.settings.feishuWebhook) state.feishuWebhook = data.settings.feishuWebhook;
         if (data.settings.selectedWarehouses) state.selectedWarehouses = data.settings.selectedWarehouses;
-        if (data.settings.periodicQuery !== undefined) state.periodicQuery = data.settings.periodicQuery;
+
       }
       // Also save to localStorage as backup
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -887,7 +885,7 @@ function switchTab(name, btn) {
   
   if (name === 'booking') renderBooking();
   if (name === 'warehouses') renderWarehouseManagement();
-  if (name === 'history') renderHistory();
+  if (name === 'history') renderTasks();
   if (name === 'settings') renderSettings();
 }
 
@@ -1037,15 +1035,6 @@ function renderBooking() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     dateInput.value = tomorrow.toISOString().split('T')[0];
   }
-  
-  // Restore periodic query button state
-  const btn = document.getElementById('periodicBtn');
-  if (state.periodicQuery && btn) {
-    btn.className = 'btn btn-primary';
-    btn.style.cssText = 'flex:1;padding:14px;font-size:16px;justify-content:center;';
-    btn.innerHTML = '⏱ 定时查询中 (1h)';
-    schedulePeriodicQuery();
-  }
 }
 
 function toggleWarehouseSelection(index) {
@@ -1131,16 +1120,6 @@ async function startQuery() {
     // Display results
     renderQueryResults(results, warehouseNames, queryDate);
     
-    // Add to history
-    state.history.push({
-      type: 'query',
-      date: queryDate,
-      warehouses: warehouseNames,
-      timestamp: new Date().toISOString(),
-      hasAvailable: results.some(r => r.matchCount > 0)
-    });
-    saveState();
-    
     // Send Feishu notification if any found
     const availableWarehouses = results.filter(r => r.matchCount > 0);
     if (availableWarehouses.length > 0 && state.feishuWebhook) {
@@ -1151,7 +1130,7 @@ async function startQuery() {
     }
     
     showQueryStatus('✅ 查询完成');
-    renderHistory();
+    renderTasks();
     
   } catch(e) {
     showQueryStatus('❌ 查询异常：' + e.message);
@@ -1166,44 +1145,53 @@ function showQueryStatus(msg) {
   textEl.textContent = msg;
 }
 
-function togglePeriodicQuery() {
-  state.periodicQuery = !state.periodicQuery;
-  saveState();
-  syncWarehousesToServer();
+function createTimedTask() {
+  const selected = state.selectedWarehouses;
   
-  const btn = document.getElementById('periodicBtn');
-  if (state.periodicQuery) {
-    btn.className = 'btn btn-primary';
-    btn.style.cssText = 'flex:1;padding:14px;font-size:16px;justify-content:center;';
-    btn.innerHTML = '⏱ 定时查询中 (1h)';
-    toast('⏱ 已开启定时查询，每1小时自动检查');
-    schedulePeriodicQuery();
-  } else {
-    btn.className = 'btn btn-secondary';
-    btn.style.cssText = 'flex:1;padding:14px;font-size:16px;justify-content:center;';
-    btn.innerHTML = '⏱ 定时查询';
-    toast('已关闭定时查询');
-    clearPeriodicQuery();
+  if (selected.length === 0) {
+    toast('请先勾选仓库', 'error');
+    return;
   }
-}
-
-let periodicTimer = null;
-
-function schedulePeriodicQuery() {
-  clearPeriodicQuery();
-  periodicTimer = setInterval(() => {
-    if (state.periodicQuery) {
-      startQuery();
+  
+  const queryDate = document.getElementById('queryDate').value;
+  if (!queryDate) {
+    toast('请选择日期', 'error');
+    return;
+  }
+  
+  const warehouseNames = selected.map(i => state.warehouses[i]?.name).filter(Boolean);
+  const warehouseRefs = selected.map(i => state.warehouses[i]?.name || '').filter(Boolean);
+  
+  // 获取配送方式（用第一个选中仓库的配送方式）
+  const firstWh = state.warehouses[selected[0]];
+  const deliveryType = firstWh ? (firstWh.deliveryType || '箱子') : '箱子';
+  
+  fetch('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      warehouses: warehouseRefs,
+      warehouseNames: warehouseNames,
+      date: queryDate,
+      deliveryType: deliveryType
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      toast('✅ 定时任务已创建，每1小时自动检查');
+      renderTasks();
+    } else if (data.status === 'duplicate') {
+      toast('⚠️ 该任务已存在', 'warning');
+      switchTab('history', document.querySelectorAll('.tab-btn')[3]);
+    } else {
+      toast('❌ 创建失败: ' + (data.error || '未知错误'), 'error');
     }
-  }, 3600000); // 1 hour
+  })
+  .catch(() => toast('❌ 网络错误', 'error'));
 }
 
-function clearPeriodicQuery() {
-  if (periodicTimer) {
-    clearInterval(periodicTimer);
-    periodicTimer = null;
-  }
-}
+
 
 function renderQueryResults(results, warehouseNames, queryDate) {
   const container = document.getElementById('queryResultContent');
@@ -1293,39 +1281,84 @@ async function sendFeishuNotification(title, content) {
 }
 // History
 // ===========================
-function renderHistory() {
-  const container = document.getElementById('historyList');
-  if (state.history.length === 0) {
-    container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>暂无查询记录</p></div>';
-    return;
-  }
+function renderTasks() {
+  const container = document.getElementById('taskList');
   
-  container.innerHTML = state.history.slice().reverse().map(h => {
-    const ts = new Date(h.timestamp);
-    const timeStr = `${ts.getMonth()+1}月${ts.getDate()}日 ${pad2(ts.getHours())}:${pad2(ts.getMinutes())}`;
-    const hasResult = h.hasAvailable || false;
-    return `
-      <div class="history-item">
-        <div>
-          <div class="date">${h.type === 'query' ? '🔍 查询' : '📋 操作'}</div>
-          <div class="warehouses">🏭 ${(h.warehouses || []).join('、')}</div>
-        </div>
-        <div style="text-align:right;">
-          <div class="badge ${hasResult ? 'badge-green' : 'badge-blue'}">${hasResult ? '✅ 有可用' : '❌ 无可用'}</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${timeStr}</div>
-        </div>
-      </div>
-    `;
-  }).join('');
+  fetch('/api/tasks')
+    .then(r => r.json())
+    .then(data => {
+      const tasks = data.tasks || [];
+      if (tasks.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">⏱</div><p>暂无定时任务，在「查询监控」中选择仓库和日期后点击「定时查询」创建</p></div>';
+        return;
+      }
+      
+      container.innerHTML = tasks.map(t => {
+        const isEnabled = t.enabled;
+        const warehouses = (t.warehouseNames || t.warehouses || []).join('、');
+        const lastRun = t.lastRunAt ? new Date(t.lastRunAt).toLocaleString('zh-CN', { hour12: false }) : '尚未执行';
+        const created = t.createdAt ? new Date(t.createdAt).toLocaleString('zh-CN', { hour12: false }) : '';
+        return `
+          <div class="task-item" style="display:flex;align-items:center;gap:10px;padding:12px 16px;margin-bottom:8px;background:var(--surface2);border-radius:10px;border:1px solid var(--border);">
+            <div style="flex:1;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <span class="badge ${isEnabled ? 'badge-green' : 'badge-red'}">${isEnabled ? '运行中' : '已暂停'}</span>
+                <span style="font-weight:500;">📅 ${t.date || '?'}</span>
+                <span style="font-size:13px;color:var(--text-secondary);">📦 ${t.deliveryType || '箱子'}</span>
+              </div>
+              <div style="font-size:13px;color:var(--text-secondary);">🏭 ${warehouses}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">⏱ 上次执行：${lastRun}${created ? ' | 创建于 ' + created : ''}</div>
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0;">
+              <button class="btn btn-sm ${isEnabled ? 'btn-secondary' : 'btn-primary'}" onclick="toggleTask('${t.id}')" title="${isEnabled ? '暂停' : '启用'}">
+                ${isEnabled ? '⏸' : '▶️'}
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')" title="删除">
+                🗑️
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    })
+    .catch(() => {
+      container.innerHTML = '<div class="empty-state"><div class="icon">❌</div><p>加载任务失败</p></div>';
+    });
 }
 
-function clearHistory() {
-  if (confirm('确定清空所有预约记录？')) {
-    state.history = [];
-    saveState();
-    renderHistory();
-    toast('已清空');
-  }
+function toggleTask(taskId) {
+  fetch('/api/tasks', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: taskId, action: 'toggle' })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      renderTasks();
+      toast('✅ 已更新任务状态');
+    } else {
+      toast('❌ 操作失败', 'error');
+    }
+  })
+  .catch(() => toast('❌ 网络错误', 'error'));
+}
+
+function deleteTask(taskId) {
+  if (!confirm('确定删除此定时任务？')) return;
+  fetch('/api/tasks?id=' + taskId, {
+    method: 'DELETE'
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      renderTasks();
+      toast('已删除任务');
+    } else {
+      toast('❌ 删除失败', 'error');
+    }
+  })
+  .catch(() => toast('❌ 网络错误', 'error'));
 }
 
 // ===========================
@@ -1415,7 +1448,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   renderBooking();
   renderWarehouseManagement();
   renderSettings();
-  renderHistory();
+  renderTasks();
 
   
   // Save on feishu webhook changes
