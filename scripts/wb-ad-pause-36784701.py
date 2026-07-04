@@ -1,80 +1,112 @@
 #!/usr/bin/env python3
 """
-WB 广告暂停脚本 - 广告ID 36784701
-每天北京时间07:00执行
-1. 推送暂停通知到飞书群
-2. 暂停广告（非关闭）
+WB 广告暂停脚本（带二次确认+群通知）
+每天07:10 由系统cron执行
+暂停广告ID 36784701
 """
 import json
 import subprocess
 import sys
 import os
+import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import LOG_DIR, WB_PROXY
+from config import LOG_DIR
 from lib.feishu import get_tenant_token, send_text_to_group
 
-LOG_FILE = f"{LOG_DIR}/wb-ad-pause-36784701.log"
+LOG_FILE = f"{LOG_DIR}/wb-ad-pause.log"
 AD_ID = 36784701
 
 
 def log(msg):
-    ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    with open(LOG_FILE, 'a') as f:
-        f.write(f'[{ts}] {msg}\n')
-    print(f'[{ts}] {msg}')
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(LOG_FILE, "a") as f:
+        f.write(f"[{ts}] {msg}\n")
+    print(f"[{ts}] {msg}")
+
+
+def get_wb_token():
+    import config
+    token_file = config.WB_TOKEN_FILE
+    with open(token_file) as f:
+        return json.load(f)["jwt"]
+
+
+def get_ad_name(ad_id):
+    token = get_wb_token()
+    try:
+        r = subprocess.run(
+            ["curl", "-s", "-H", f"Authorization: {token}",
+             f"https://advert-api.wildberries.ru/api/advert/v2/adverts?ids={ad_id}"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            universal_newlines=True, timeout=15
+        )
+        data = json.loads(r.stdout)
+        return data["adverts"][0]["settings"]["name"]
+    except Exception as e:
+        log(f"获取广告名称失败: {e}")
+        return str(ad_id)
+
+
+def check_status(ad_id, expected, retries=3):
+    token = get_wb_token()
+    for i in range(retries):
+        time.sleep(2)
+        try:
+            r = subprocess.run(
+                ["curl", "-s", "-H", f"Authorization: {token}",
+                 f"https://advert-api.wildberries.ru/api/advert/v2/adverts?ids={ad_id}"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True, timeout=15
+            )
+            data = json.loads(r.stdout)
+            status = data["adverts"][0]["status"]
+            if status == expected:
+                log(f"广告 {ad_id} 状态确认: {status} ✅")
+                return True
+            else:
+                log(f"广告 {ad_id} 状态不符: 期望{expected}, 实际{status} (重试{i+1}/{retries})")
+        except Exception as e:
+            log(f"广告 {ad_id} 查询异常: {e} (重试{i+1}/{retries})")
+    return False
 
 
 def pause_ad(ad_id):
-    """暂停广告"""
-    with open(os.path.expanduser('~/.openclaw/workspace/secrets/wb-api.json')) as f:
-        token = json.load(f)['jwt']
-    
+    token = get_wb_token()
     r = subprocess.run(
-        ['curl', '-s', '-H', f'Authorization: {token}',
-         f'https://advert-api.wildberries.ru/adv/v0/pause?id={ad_id}'],
-        capture_output=True, text=True, timeout=15
+        ["curl", "-s", "-H", f"Authorization: {token}",
+         f"https://advert-api.wildberries.ru/adv/v0/pause?id={ad_id}"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True, timeout=15
     )
-    
-    # 空响应=成功
-    if not r.stdout.strip():
-        log(f"广告 {ad_id} 暂停成功")
-        return True
-    else:
-        log(f"广告 {ad_id} 暂停返回: {r.stdout[:100]}")
+    if r.stdout.strip():
+        log(f"广告 {ad_id} 暂停API异常: {r.stdout[:100]}")
         return False
+    log(f"广告 {ad_id} 暂停API成功，正在确认状态...")
+    return check_status(ad_id, 11)
 
 
 def main():
     log("=== WB广告暂停开始 ===")
-    
     try:
-        # 1. 先推送暂停通知
+        ad_name = get_ad_name(AD_ID)
+        log(f"广告名称: {ad_name}")
+        ok = pause_ad(AD_ID)
         token = get_tenant_token()
-        send_text_to_group(token, f"⏸️ 即将暂停 WB 广告\n广告ID: {AD_ID}\n北京时间 07:00 自动执行")
-        log("暂停通知已发送")
-        
-        # 2. 执行暂停
-        result = pause_ad(AD_ID)
-        
-        # 3. 推送结果
-        if result:
-            send_text_to_group(token, f"✅ WB广告已暂停\n广告 {AD_ID} 暂停成功\n（非关闭，可随时恢复）")
+        if ok:
+            send_text_to_group(token, f"⏸️ WB广告暂停\n📌 {ad_name}（{AD_ID}）\n✅ 已确认暂停（status=11）")
         else:
-            send_text_to_group(token, f"⚠️ WB广告暂停可能失败\n广告ID: {AD_ID}\n请检查后台状态")
-        
-        log(f"=== WB广告暂停完成 ===")
-        
+            send_text_to_group(token, f"⚠️ WB广告暂停异常\n📌 {ad_name}（{AD_ID}）\n❌ 状态确认失败，请手动检查")
+        log("=== WB广告暂停完成 ===")
     except Exception as e:
-        log(f"❌ 失败: {e}")
+        log(f"❌ 异常: {e}")
         try:
-            tk = get_tenant_token()
-            send_text_to_group(tk, f"❌ WB广告暂停异常: {str(e)[:200]}")
+            send_text_to_group(get_tenant_token(), f"❌ WB广告暂停异常\n广告 {AD_ID}: {str(e)[:200]}")
         except:
             pass
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
