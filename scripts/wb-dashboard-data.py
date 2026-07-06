@@ -18,6 +18,7 @@ import subprocess
 import sys
 import os
 import time
+import fcntl
 from datetime import datetime, timezone, timedelta
 MSK_TZ = timezone(timedelta(hours=3))
 
@@ -29,6 +30,7 @@ except ImportError:
     WB_PROXY = None
 
 LOG_FILE = f"{LOG_DIR}/wb-dashboard.log"
+LOCK_FILE = f"{LOG_DIR}/wb-dashboard.lock"
 
 
 def log(msg):
@@ -38,26 +40,22 @@ def log(msg):
     print(f'[{ts}] {msg}', file=sys.stderr)
 
 
+def acquire_lock():
+    """获取文件锁，防止并发执行"""
+    lock_fd = open(LOCK_FILE, 'w')
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return lock_fd
+    except IOError:
+        lock_fd.close()
+        return None
+
+
 def get_wb_token():
     with open(WB_TOKEN_FILE) as f:
         tok = json.load(f)['jwt']
     tok = tok.strip()
     return tok
-
-
-def _run(cmd, timeout=30):
-    """兼容Python 3.6的subprocess.run"""
-    try:
-        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
-        stderr = r.stderr.decode('utf-8', errors='replace') if isinstance(r.stderr, bytes) else r.stderr
-        if stderr.strip():
-            log(f"curl stderr: {stderr[:200]}")
-        if isinstance(r.stdout, bytes):
-            return r.stdout.decode('utf-8', errors='replace')
-        return r.stdout
-    except Exception as e:
-        log(f"_run ERROR: {e}")
-        return ""
 
 
 def _http_request(method, url, data=None, retries=2):
@@ -67,6 +65,8 @@ def _http_request(method, url, data=None, retries=2):
     from urllib.request import Request, urlopen
     
     token = get_wb_token()
+    last_error = None
+    
     for attempt in range(retries + 1):
         try:
             r = Request(url, method=method)
@@ -79,9 +79,11 @@ def _http_request(method, url, data=None, retries=2):
                 resp = urlopen(r, timeout=25)
             raw = resp.read().decode('utf-8')
             if raw.strip():
-                return json.loads(raw)
+                result = json.loads(raw)
+                return result
             return {}
         except urllib.error.HTTPError as e:
+            last_error = e
             body = e.read().decode('utf-8', errors='replace')
             if '429' in str(e) or 'too many' in body.lower():
                 log(f"⚠️ API限流，等待30秒 (attempt {attempt+1})")
@@ -95,12 +97,14 @@ def _http_request(method, url, data=None, retries=2):
                     pass
             return {'error': f'HTTP {e.code}'}
         except Exception as e:
+            last_error = e
             log(f"HTTP请求失败: {e}")
             if attempt < retries:
                 time.sleep(5)
                 continue
             return {}
-    return {}
+    
+    return {'error': str(last_error) if last_error else 'unknown'}
 
 
 def api_post(url, data, use_proxy=True, retries=2):
@@ -160,20 +164,47 @@ def fetch_all_adverts():
 
 
 def fetch_ad_fullstats(start_date, end_date, advert_ids):
-    """获取广告活动完整统计"""
+    """获取广告活动完整统计，带重试验证"""
     if not advert_ids:
         return []
     ids = ','.join(str(i) for i in advert_ids)
     url = (f'https://advert-api.wildberries.ru/adv/v3/fullstats'
            f'?ids={ids}&period=day&beginDate={start_date}&endDate={end_date}')
-    data = api_get(url, use_proxy=False)
-
-    # 确保是列表
-    if isinstance(data, list):
-        log(f"广告统计返回 {len(data)} 个活动")
-        return data
-    elif isinstance(data, dict) and 'adverts' in data:
-        return data['adverts']
+    
+    # 最多重试3轮，确保不返回 sum=0 的无效数据
+    for round_attempt in range(3):
+        data = api_get(url, use_proxy=False)
+        
+        # 确保是列表
+        if isinstance(data, list):
+            # 验证：统计所有ad的sum总和
+            total_sum = 0
+            for campaign in data:
+                days = campaign.get('days', [])
+                for day in days:
+                    for app in day.get('apps', []):
+                        for nm in app.get('nms', []):
+                            total_sum += nm.get('sum', 0) or 0
+            
+            log(f"广告统计返回 {len(data)} 个活动，总sum={total_sum:.2f}")
+            
+            # 如果总sum为0但数据中有订单，说明API可能返回了无效数据
+            if total_sum == 0 and len(data) > 0:
+                # 检查是否campaign有orders数据
+                has_orders = any(c.get('orders', 0) > 0 for c in data)
+                if has_orders and round_attempt < 2:
+                    log(f"⚠️ sum=0但存在订单数据，怀疑API返回异常，等待重试 (attempt {round_attempt+1})")
+                    time.sleep(10)
+                    continue
+            
+            return data
+        elif isinstance(data, dict) and 'adverts' in data:
+            return data['adverts']
+        else:
+            log(f"广告统计返回格式异常，等待重试 (attempt {round_attempt+1})")
+            time.sleep(10)
+            continue
+    
     return []
 
 
@@ -303,12 +334,7 @@ def merge_data(products, nm_stats, nm_to_ads, all_adverts, start_date, end_date)
 
         total_ad_cost += ad_cost
 
-        # 广告占比
-        ad_ratio = round(ad_cost / amount * 100, 2) if amount > 0 else 0
-        # 广告费占成交额比例
-        ad_buyout_ratio = round(ad_cost / buyout_sum * 100, 2) if buyout_sum > 0 else 0
-
-        # 净利润 = 销售额 - 广告费（实际中还需考虑成本、佣金等）
+        # 净利润
         profit = amount - ad_cost
         total_profit += profit
 
@@ -326,8 +352,8 @@ def merge_data(products, nm_stats, nm_to_ads, all_adverts, start_date, end_date)
             'adOrders': ad_orders,
             'adClicks': ad_clicks,
             'adViews': ad_views,
-            'adRatio': ad_ratio,
-            'adBuyoutRatio': ad_buyout_ratio,
+            'adRatio': round(ad_cost / amount * 100, 2) if amount > 0 else 0,
+            'adBuyoutRatio': round(ad_cost / buyout_sum * 100, 2) if buyout_sum > 0 else 0,
             'profit': round(profit, 2),
             'adDetails': ad_details,
             'activeCampaigns': active_campaigns
@@ -408,6 +434,12 @@ def main():
 
     log("=== WB日报数据生成开始 ===")
 
+    # 获取文件锁，防止并发
+    lock_fd = acquire_lock()
+    if lock_fd is None:
+        log("⚠️ 另一实例正在运行，跳过本次执行")
+        return
+
     try:
         # 计算MSK日期
         now_utc = datetime.now(timezone.utc)
@@ -436,6 +468,11 @@ def main():
         # 4. 合并数据
         report = merge_data(products, nm_stats, nm_to_ads, all_ads, start_date, end_date)
 
+        # 5. 数据校验：广告费为0但有订单时发出警告（不阻止输出）
+        summary = report['summary']
+        if summary['totalOrders'] > 0 and summary['totalAdCost'] == 0 and len(ad_stats_data) > 0:
+            log(f"⚠️ 警告：有订单({summary['totalOrders']}单)但广告费为0，可能API数据异常")
+        
         # 输出
         output = json.dumps(report, ensure_ascii=False, indent=2 if args.pretty else None)
         
@@ -448,16 +485,21 @@ def main():
             print(output)
 
         log(f"=== WB日报数据生成完成 ✅ ===")
-        log(f"汇总: {report['summary']['totalOrders']}单, "
-            f"{report['summary']['totalAmount']:,.0f}₽, "
-            f"广告费{report['summary']['totalAdCost']:,.0f}₽, "
-            f"占比{report['summary']['adRatio']}%")
+        log(f"汇总: {summary['totalOrders']}单, "
+            f"{summary['totalAmount']:,.0f}₽, "
+            f"广告费{summary['totalAdCost']:,.0f}₽, "
+            f"占比{summary['adRatio']}%")
 
     except Exception as e:
         log(f"❌ 失败: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
+    finally:
+        # 释放锁
+        if lock_fd:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
 
 
 if __name__ == '__main__':

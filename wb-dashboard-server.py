@@ -190,6 +190,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404, 'Not Found')
     
+    def is_cache_stale(self, cache_file, start_date):
+        """检测缓存是否过时：MSK日期已结束后缓存的才是有效的"""
+        if not os.path.exists(cache_file):
+            return True
+        # MSK 00:00 = Beijing 05:00
+        # 如果查询的是前一天的MSK数据，缓存应该在今天北京时间05:00之后生成才完整
+        try:
+            file_mtime = os.path.getmtime(cache_file)
+            file_dt = datetime.fromtimestamp(file_mtime, tz=timezone.utc)
+
+            # 计算今天的MSK午夜（北京时间05:00 UTC 21:00）
+            now_utc = datetime.now(timezone.utc)
+            msk_midnight_today = now_utc.replace(hour=21, minute=0, second=0, microsecond=0)
+            # 如果是凌晨0-5点（北京时间），MSK午夜还没到
+            if now_utc.hour < 21:
+                msk_midnight_today -= timedelta(days=1)
+
+            # 如果缓存文件在MSK午夜之前生成，视为过时
+            return file_dt < msk_midnight_today
+        except:
+            return True
+
     def handle_api(self, params):
         start = params.get('start', [None])[0]
         end = params.get('end', [None])[0]
@@ -208,19 +230,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
         
         cache_file = get_data_file(start, end)
         cached_data = None
-        if os.path.exists(cache_file):
+        cache_stale = self.is_cache_stale(cache_file, start)
+        
+        if os.path.exists(cache_file) and not cache_stale:
             try:
                 with open(cache_file, 'r', encoding='utf-8') as f:
                     cached_data = json.load(f)
             except:
                 pass
         
-        if is_force_refresh:
+        if is_force_refresh or (not cached_data):
             data = fetch_data(start, end)
             if (not data or data.get('error')) and cached_data:
                 data = cached_data
         else:
-            data = cached_data if cached_data else fetch_data(start, end)
+            data = cached_data
         
         self.send_json(data)
     
