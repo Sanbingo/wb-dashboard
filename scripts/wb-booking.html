@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WB 仓库预约 🦊</title>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --surface2: #fafafa;
+  --border: #e8e8e8;
+  --text: #262626;
+  --text-secondary: #8c8c8c;
+  --text-muted: #bfbfbf;
+  --primary: #6c5ce7;
+  --primary-light: #a29bfe;
+  --primary-bg: #f0edff;
+  --green: #52c41a;
+  --green-bg: #f6ffed;
+  --orange: #fa8c16;
+  --orange-bg: #fff7e6;
+  --red: #ff4d4f;
+  --red-bg: #fff2f0;
+  --blue: #1677ff;
+  --blue-bg: #e6f4ff;
+  --radius: 12px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { display: flex; 
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  
+  min-height: 100vh;
+}
+.container { max-width: 900px; margin: 0 auto; }
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.header h1 {
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.header h1 small { font-size: 14px; font-weight: normal; color: var(--text-secondary); }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.tab-btn {
+  flex: 1;
+  padding: 14px 20px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+  font-weight: 500;
+}
+.tab-btn:hover { color: var(--text); background: var(--surface2); }
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: var(--primary-bg);
+}
+
+/* Panels */
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-actions { display: flex; gap: 8px; }
+
+/* Form Elements */
+.form-group { margin-bottom: 16px; }
+.form-group:last-child { margin-bottom: 0; }
+label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+input[type="text"],
+input[type="date"],
+input[type="time"],
+input[type="number"],
+input[type="url"],
+textarea,
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  background: var(--surface);
+  color: var(--text);
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-bg);
+}
+
+/* Buttons */
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+.btn-primary {
+  background: var(--primary);
+  color: white;
+}
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-secondary {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { background: #f0f0f0; }
+.btn-danger {
+  background: var(--red);
+  color: white;
+}
+.btn-danger:hover { opacity: 0.9; }
+.btn-success {
+  background: var(--green);
+  color: white;
+}
+.btn-success:hover { opacity: 0.9; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-icon {
+  width: 32px; height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+/* Warehouse List */
+.warehouse-list { display: flex; flex-direction: column; gap: 8px; }
+.warehouse-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface2);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  transition: all 0.2s;
+}
+.warehouse-item:hover { border-color: var(--primary-light); }
+.warehouse-item.selected {
+  background: var(--primary-bg);
+  border-color: var(--primary);
+}
+.warehouse-item input[type="checkbox"] {
+  width: 20px; height: 20px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.warehouse-info { flex: 1; }
+.warehouse-name { font-weight: 500; font-size: 15px; }
+.warehouse-status { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.warehouse-status.ready { color: var(--green); }
+.warehouse-status.booked { color: var(--blue); }
+.warehouse-status.pending { color: var(--orange); }
+.warehouse-actions { display: flex; gap: 4px; }
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+.empty-state p { margin-bottom: 16px; }
+
+/* Status badge */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-orange { background: var(--orange-bg); color: var(--orange); }
+.badge-blue { background: var(--blue-bg); color: var(--blue); }
+.badge-red { background: var(--red-bg); color: var(--red); }
+
+/* Settings form */
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .settings-grid { grid-template-columns: 1fr; }
+}
+
+/* Status toast */
+.toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  border-left: 4px solid var(--green);
+  z-index: 1000;
+  animation: slideIn 0.3s ease;
+  font-size: 14px;
+  max-width: 360px;
+}
+.toast.error { border-left-color: var(--red); }
+.toast.warning { border-left-color: var(--orange); }
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Schedule table */
+.schedule-table { width: 100%; border-collapse: collapse; }
+.schedule-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 2px solid var(--border);
+}
+.schedule-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.schedule-table tr:hover td { background: var(--surface2); }
+
+/* Modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 999;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+.modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* Next booking indicator */
+.next-booking {
+  background: linear-gradient(135deg, var(--primary-bg), #e8f4fd);
+  border: 1px solid var(--primary-light);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.next-booking .label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+.next-booking .value { font-size: 18px; font-weight: 600; color: var(--primary); }
+
+/* Loading */
+.loading {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Feishu test result */
+.test-result {
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  display: none;
+}
+.test-result.success { display: block; background: var(--green-bg); color: var(--green); }
+.test-result.fail { display: block; background: var(--red-bg); color: var(--red); }
+
+/* Toggle switch */
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: #ccc;
+  border-radius: 24px;
+  transition: 0.3s;
+}
+.toggle-slider:before {
+  content: "";
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+.toggle input:checked + .toggle-slider { background: var(--primary); }
+.toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
+
+/* Help text */
+.help-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* History list */
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--surface2);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.history-item .date { font-weight: 500; }
+.history-item .warehouses { color: var(--text-secondary); }
+.history-item .status { }
+
+/* ====== Sidebar ====== */
+:root {
+  --sidebar-w: 220px;
+  --sidebar-collapsed-w: 56px;
+  --sidebar-bg: #1a1a2e;
+  --sidebar-hover: #16213e;
+  --sidebar-active: #0f3460;
+  --sidebar-text: #a8a8c8;
+  --sidebar-text-active: #ffffff;
+  --sidebar-accent: #6c5ce7;
+}
+.sidebar {
+  position: fixed;
+  top: 0; left: 0;
+  width: var(--sidebar-w);
+  height: 100vh;
+  height: 100dvh;
+  background: var(--sidebar-bg);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sidebar.collapsed { width: var(--sidebar-collapsed-w); }
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  min-height: 64px;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sidebar-logo .logo-icon { font-size: 24px; flex-shrink: 0; }
+.sidebar-logo .logo-text { transition: opacity 0.2s; }
+.sidebar.collapsed .sidebar-logo .logo-text { opacity: 0; width: 0; overflow: hidden; }
+.sidebar-toggle {
+  background: none; border: none;
+  color: var(--sidebar-text);
+  cursor: pointer; font-size: 18px;
+  padding: 4px; border-radius: 6px;
+  transition: all 0.2s;
+  flex-shrink: 0; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+}
+.sidebar-toggle:hover { color: #fff; background: rgba(255,255,255,0.1); }
+.sidebar-nav { flex: 1; padding: 12px 8px; overflow-y: auto; }
+.sidebar-nav::-webkit-scrollbar { width: 3px; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+.nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 8px;
+  color: var(--sidebar-text); text-decoration: none;
+  font-size: 14px; font-weight: 500;
+  transition: all 0.2s; margin-bottom: 2px;
+  white-space: nowrap; overflow: hidden; cursor: pointer;
+}
+.nav-item:hover { background: var(--sidebar-hover); color: var(--sidebar-text-active); }
+.nav-item.active { background: var(--sidebar-active); color: var(--sidebar-text-active); border-left: 3px solid var(--sidebar-accent); }
+.nav-item .nav-icon { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
+.nav-item .nav-label { transition: opacity 0.2s; }
+.sidebar.collapsed .nav-item .nav-label { opacity: 0; width: 0; overflow: hidden; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 10px 0; }
+.sidebar.collapsed .nav-item.active { border-left: 3px solid transparent; }
+.sidebar-footer { padding: 12px 8px; border-top: 1px solid rgba(255,255,255,0.08); }
+.main-content {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  min-height: 100vh;
+  min-height: 100dvh;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.main-content.sidebar-collapsed { margin-left: var(--sidebar-collapsed-w); }
+@media (max-width: 768px) {
+  .sidebar { width: var(--sidebar-collapsed-w); }
+  .sidebar .sidebar-logo .logo-text,
+  .sidebar .nav-item .nav-label { opacity: 0; width: 0; overflow: hidden; }
+  .sidebar .nav-item { justify-content: center; padding: 10px 0; }
+  .main-content { margin-left: var(--sidebar-collapsed-w); }
+  .sidebar.expanded { width: var(--sidebar-w); box-shadow: 4px 0 20px rgba(0,0,0,0.3); }
+  .sidebar.expanded .sidebar-logo .logo-text,
+  .sidebar.expanded .nav-item .nav-label { opacity: 1; width: auto; overflow: visible; }
+  .sidebar.expanded .nav-item { justify-content: flex-start; padding: 10px 12px; }
+}
+
+</style>
+</head>
+<body>
+<!-- Sidebar -->
+<div class="sidebar collapsed" id="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">
+      <span class="logo-icon">🦊</span>
+      <span class="logo-text">WB 工具集</span>
+    </div>
+    <button class="sidebar-toggle" onclick="toggleSidebar()" title="折叠侧栏">☰</button>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="wb-dashboard.html" class="nav-item" data-page="dashboard">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">销售日报</span>
+    </a>
+    <a href="wb-inventory.html" class="nav-item" data-page="inventory">
+      <span class="nav-icon">📦</span>
+      <span class="nav-label">库存分析</span>
+    </a>
+    <a href="wb-booking.html" class="nav-item active" data-page="booking">
+      <span class="nav-icon">📅</span>
+      <span class="nav-label">仓库预约</span>
+    </a>
+    <a href="wb-settings.html" class="nav-item" data-page="settings">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">设置</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="#" onclick="logout()" class="nav-item" style="margin-bottom:0">
+      <span class="nav-icon">⏻</span>
+      <span class="nav-label">退出</span>
+    </a>
+  </div>
+</div>
+
+<div class="main-content sidebar-collapsed" id="mainContent">
+
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1>📦 仓库预约 <small>Wildberries</small></h1>
+    <div style="display:flex;gap:8px;align-items:center;">
+
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('booking', this)">🔍 查询监控</button>
+    <button class="tab-btn" onclick="switchTab('warehouses', this)">🏭 仓库管理</button>
+    <button class="tab-btn" onclick="switchTab('settings', this)">⚙️ 设置</button>
+    <button class="tab-btn" onclick="switchTab('history', this)">📜 定时任务</button>
+  </div>
+
+  <!-- ============ Panel: 预约管理 ============ -->
+  <div id="panel-booking" class="panel active">
+    <!-- 查询状态提示 -->
+    <div class="status-bar" id="queryStatus" style="display:none;margin-bottom:16px;padding:12px 16px;background:var(--primary-bg);border-radius:var(--radius);border:1px solid var(--primary-light);">
+      <div id="queryStatusText" style="font-size:14px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">✅ 勾选要查询的仓库</div>
+        <div>
+          <label class="toggle" title="全选/取消全选">
+            <input type="checkbox" id="selectAll" onchange="toggleAll()">
+            <span class="toggle-slider"></span>
+          </label>
+          <span style="font-size:12px;color:var(--text-secondary);margin-left:4px;">全选</span>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:12px;">
+        <label>查询日期</label>
+        <input type="date" id="queryDate">
+      </div>
+      <div id="bookingWarehouseList" class="warehouse-list">
+        <div class="empty-state">
+          <div class="icon">🏭</div>
+          <p>还没有仓库，请先到「仓库管理」添加</p>
+          <button class="btn btn-primary" onclick="switchTab('warehouses', document.querySelector('.tab-btn:nth-child(2)'))">去添加仓库</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:16px;">
+      <button class="btn btn-primary" style="flex:1;padding:14px;font-size:16px;justify-content:center;" onclick="startQuery()">
+        🚀 开始查询
+      </button>
+      <button class="btn btn-secondary" id="periodicBtn" style="flex:1;padding:14px;font-size:16px;justify-content:center;" onclick="createTimedTask()">
+        ⏱ 定时查询
+      </button>
+    </div>
+
+    <!-- 查询结果 -->
+    <div id="queryResults" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📊 查询结果</div>
+          <span id="queryTime" style="font-size:13px;color:var(--text-secondary);"></span>
+        </div>
+        <div id="queryResultContent">
+          <!-- 动态填充 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Panel: 仓库管理 ============ -->
+  <div id="panel-warehouses" class="panel">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🏭 我的仓库</div>
+        <button class="btn btn-primary btn-sm" onclick="showAddWarehouseModal()">+ 添加仓库</button>
+      </div>
+      <div id="warehouseManageList">
+        <div class="empty-state">
+          <div class="icon">📪</div>
+          <p>还没有添加仓库</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ Panel: 设置 ============ -->
+  <div id="panel-settings" class="panel">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🤖 飞书机器人</div>
+      </div>
+      <div class="form-group">
+        <label>飞书 Webhook URL</label>
+        <input type="url" id="feishuWebhook" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx">
+        <div class="help-text">预约成功时，通过飞书机器人推送通知</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="testFeishu()">📨 测试发送</button>
+      </div>
+      <div id="feishuTestResult" class="test-result"></div>
+    </div>
+
+
+
+
+  </div>
+
+  <!-- ============ Panel: 定时任务 ============ -->
+  <div id="panel-history" class="panel">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">📜 定时任务</div>
+      </div>
+      <div id="taskList">
+        <div class="empty-state">
+          <div class="icon">⏱</div>
+          <p>暂无定时任务，在「查询监控」中选择仓库和日期后点击「定时查询」创建</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: 添加仓库 -->
+<div class="modal-overlay" id="addWarehouseModal">
+  <div class="modal">
+    <div class="modal-title">🏭 添加仓库</div>
+    <div class="form-group">
+      <label>仓库名称</label>
+      <input type="text" id="newWarehouseName" placeholder="例如：Коледино, Электросталь, Чехов..." autofocus>
+    </div>
+    <div class="form-group">
+      <label>配送方式</label>
+      <div style="display:flex;gap:12px;padding:4px 0;">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="deliveryType" value="箱子" checked>
+          <span>箱子</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="deliveryType" value="托盘">
+          <span>托盘</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="deliveryType" value="箱子和托盘">
+          <span>箱子和托盘</span>
+        </label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>仓库地址</label>
+      <input type="text" id="newWarehouseAddress" placeholder="例如：Московская область, г. Коледино">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('addWarehouseModal')">取消</button>
+      <button class="btn btn-primary" onclick="addWarehouse()">✅ 添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: 编辑仓库 -->
+<div class="modal-overlay" id="editWarehouseModal">
+  <div class="modal">
+    <div class="modal-title">✏️ 编辑仓库</div>
+    <div class="form-group">
+      <label>仓库名称</label>
+      <input type="text" id="editWarehouseName">
+    </div>
+    <div class="form-group">
+      <label>配送方式</label>
+      <div style="display:flex;gap:12px;padding:4px 0;">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="editDeliveryType" value="箱子">
+          <span>箱子</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="editDeliveryType" value="托盘">
+          <span>托盘</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="editDeliveryType" value="箱子和托盘">
+          <span>箱子和托盘</span>
+        </label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>仓库地址</label>
+      <input type="text" id="editWarehouseAddress">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('editWarehouseModal')">取消</button>
+      <button class="btn btn-primary" onclick="saveEditWarehouse()">💾 保存</button>
+    </div>
+    <input type="hidden" id="editWarehouseIndex">
+  </div>
+</div>
+
+<script>
+// ===========================
+// State Management
+// ===========================
+const STORAGE_KEY = 'wb_booking_data';
+
+let state = {
+  warehouses: [],
+  selectedWarehouses: [],
+  feishuWebhook: '',
+  history: []
+};
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      state = deepMerge(state, saved);
+    }
+  } catch(e) {
+    console.warn('Load state error:', e);
+  }
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch(e) {
+    console.warn('Save failed:', e);
+  }
+}
+
+// ====== Server Sync ======
+async function syncWarehousesToServer() {
+  try {
+    const payload = {
+      warehouses: state.warehouses,
+      settings: {
+        feishuWebhook: state.feishuWebhook,
+
+        selectedWarehouses: state.selectedWarehouses
+      }
+    };
+    const resp = await fetch('/api/warehouses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await resp.json();
+    if (result.status !== 'ok') {
+      console.warn('Server sync failed:', result);
+    }
+  } catch(e) {
+    console.warn('Server sync error:', e);
+  }
+}
+
+async function loadWarehousesFromServer() {
+  try {
+    const resp = await fetch('/api/warehouses');
+    const data = await resp.json();
+    if (data && data.warehouses && Array.isArray(data.warehouses)) {
+      state.warehouses = data.warehouses.map(migrateWarehouse);
+      if (data.settings) {
+        if (data.settings.feishuWebhook) state.feishuWebhook = data.settings.feishuWebhook;
+        if (data.settings.selectedWarehouses) state.selectedWarehouses = data.settings.selectedWarehouses;
+
+      }
+      // Also save to localStorage as backup
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      return true;
+    }
+    return false;
+  } catch(e) {
+    console.warn('Server load failed, using localStorage:', e);
+    return false;
+  }
+
+}
+
+function migrateWarehouse(w) {
+  // 兼容旧数据格式 {name, id, note} → {name, deliveryType, address}
+  if (w.id !== undefined && w.deliveryType === undefined) {
+    return { name: w.name, deliveryType: '箱子', address: w.note || w.address || '' };
+  }
+  return { name: w.name, deliveryType: w.deliveryType || '箱子', address: w.address || '' };
+}
+
+function deepMerge(target, source) {
+  const result = { ...target };
+  for (const key in source) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      result[key] = deepMerge(target[key] || {}, source[key]);
+    } else {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
+
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transition = 'opacity 0.3s';
+    setTimeout(() => el.remove(), 300);
+  }, 3000);
+}
+
+// ===========================
+// Tab Switching
+// ===========================
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  
+  if (name === 'booking') renderBooking();
+  if (name === 'warehouses') renderWarehouseManagement();
+  if (name === 'history') renderTasks();
+  if (name === 'settings') renderSettings();
+}
+
+// ===========================
+// Warehouse Management
+// ===========================
+function renderWarehouseManagement() {
+  const container = document.getElementById('warehouseManageList');
+  if (state.warehouses.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📪</div><p>还没有添加仓库</p></div>';
+    return;
+  }
+  
+  container.innerHTML = state.warehouses.map((w, i) => `
+    <div class="warehouse-item">
+      <div class="warehouse-info">
+        <div class="warehouse-name">🏭 ${escapeHtml(w.name)}</div>
+        <div class="warehouse-status">
+          ${w.deliveryType ? '<span class="badge badge-blue">' + escapeHtml(w.deliveryType) + '</span>' : ''}
+          ${w.address ? '📍 ' + escapeHtml(w.address) : ''}
+        </div>
+      </div>
+      <div class="warehouse-actions">
+        <button class="btn btn-secondary btn-sm btn-icon" onclick="editWarehouse(${i})" title="编辑">✏️</button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteWarehouse(${i})" title="删除">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function showAddWarehouseModal() {
+  document.getElementById('addWarehouseModal').classList.add('active');
+  document.getElementById('newWarehouseName').value = '';
+  document.getElementById('newWarehouseAddress').value = '';
+  // 默认选中箱子
+  document.querySelectorAll('input[name="deliveryType"]').forEach(r => {
+    r.checked = r.value === '箱子';
+  });
+  setTimeout(() => document.getElementById('newWarehouseName').focus(), 100);
+}
+
+function addWarehouse() {
+  const name = document.getElementById('newWarehouseName').value.trim();
+  if (!name) { toast('请输入仓库名称', 'error'); return; }
+  
+  const deliveryType = document.querySelector('input[name="deliveryType"]:checked');
+  
+  state.warehouses.push({
+    name,
+    deliveryType: deliveryType ? deliveryType.value : '箱子',
+    address: document.getElementById('newWarehouseAddress').value.trim()
+  });
+  saveState();
+  syncWarehousesToServer();
+  closeModal('addWarehouseModal');
+  renderWarehouseManagement();
+  toast('✅ 已添加仓库：' + name);
+}
+
+function editWarehouse(index) {
+  const w = state.warehouses[index];
+  document.getElementById('editWarehouseName').value = w.name;
+  document.getElementById('editWarehouseAddress').value = w.address || '';
+  document.getElementById('editWarehouseIndex').value = index;
+  // 设置配送方式
+  document.querySelectorAll('input[name="editDeliveryType"]').forEach(r => {
+    r.checked = r.value === (w.deliveryType || '箱子');
+  });
+  document.getElementById('editWarehouseModal').classList.add('active');
+}
+
+function saveEditWarehouse() {
+  const index = parseInt(document.getElementById('editWarehouseIndex').value);
+  const name = document.getElementById('editWarehouseName').value.trim();
+  if (!name) { toast('请输入仓库名称', 'error'); return; }
+  
+  const deliveryType = document.querySelector('input[name="editDeliveryType"]:checked');
+  
+  state.warehouses[index] = {
+    name,
+    deliveryType: deliveryType ? deliveryType.value : '箱子',
+    address: document.getElementById('editWarehouseAddress').value.trim()
+  };
+  saveState();
+  syncWarehousesToServer();
+  closeModal('editWarehouseModal');
+  renderWarehouseManagement();
+  toast('✅ 已更新');
+}
+
+function confirmDeleteWarehouse(index) {
+  if (confirm(`确定删除仓库「${state.warehouses[index].name}」？`)) {
+    state.warehouses.splice(index, 1);
+    // Also remove from selected
+    state.selectedWarehouses = state.selectedWarehouses.filter(
+      wi => wi < state.warehouses.length
+    );
+    saveState();
+    syncWarehousesToServer();
+    renderWarehouseManagement();
+    toast('已删除');
+  }
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('active');
+}
+
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('active');
+  });
+});
+
+// ===========================
+// Fetch from WB API
+// ===========================
+
+// ===========================
+// Booking Panel
+// ===========================
+function renderBooking() {
+  const container = document.getElementById('bookingWarehouseList');
+  
+  if (state.warehouses.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">🏭</div><p>还没有仓库，请先到「仓库管理」添加</p><button class="btn btn-primary" onclick="switchTab(\'warehouses\', document.querySelector(\'.tab-btn:nth-child(2)\'))">去添加仓库</button></div>';
+    return;
+  }
+  
+  container.innerHTML = state.warehouses.map((w, i) => {
+    const selected = state.selectedWarehouses.includes(i);
+    return `
+      <div class="warehouse-item ${selected ? 'selected' : ''}" onclick="toggleWarehouseSelection(${i})">
+        <input type="checkbox" ${selected ? 'checked' : ''} data-index="${i}">
+        <div class="warehouse-info">
+          <div class="warehouse-name">🏭 ${escapeHtml(w.name)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  // 默认日期设置为明天
+  const dateInput = document.getElementById('queryDate');
+  if (dateInput && !dateInput.value) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    dateInput.value = tomorrow.toISOString().split('T')[0];
+  }
+}
+
+function toggleWarehouseSelection(index) {
+  const idx = state.selectedWarehouses.indexOf(index);
+  if (idx >= 0) {
+    state.selectedWarehouses.splice(idx, 1);
+  } else {
+    state.selectedWarehouses.push(index);
+  }
+  renderBooking();
+  saveState();
+}
+
+function toggleAll() {
+  const checked = document.getElementById('selectAll').checked;
+  if (checked) {
+    state.selectedWarehouses = state.warehouses.map((_, i) => i);
+  } else {
+    state.selectedWarehouses = [];
+  }
+  renderBooking();
+  saveState();
+}
+
+
+// ===========================
+// Query Operations
+// ===========================
+async function startQuery() {
+  const selected = state.selectedWarehouses;
+  
+  if (selected.length === 0) {
+    toast('请至少勾选一个仓库', 'error');
+    return;
+  }
+  
+  const queryDate = document.getElementById('queryDate').value;
+  if (!queryDate) {
+    toast('请选择查询日期', 'error');
+    return;
+  }
+  
+  const warehouseNames = selected.map(i => state.warehouses[i]?.name).filter(Boolean);
+  
+  // Show loading
+  showQueryStatus('⏳ 正在查询 ' + queryDate + ' 的仓库状态...');
+  document.getElementById('queryResults').style.display = 'none';
+  
+  try {
+    // Call WB marketplace API to check warehouse/office info
+    const resp = await fetch('/api/wb-offices');
+    const data = await resp.json();
+    
+    if (data.error) {
+      showQueryStatus('❌ 查询失败：' + data.error);
+      toast('查询失败', 'error');
+      return;
+    }
+    
+    const offices = data.offices || [];
+    
+    // Filter to selected warehouses
+    const results = selected.map(i => {
+      const w = state.warehouses[i];
+      if (!w) return null;
+      // Find matching office(s) from WB API
+      const matches = offices.filter(o => 
+        w.name === o.name || o.name.includes(w.name) || w.name.includes(o.name)
+      );
+      // Check delivery type compatibility
+      const deliveryMap = {'箱子': 1, '托盘': 3, '箱子和托盘': null};
+      const dt = deliveryMap[w.deliveryType || '箱子'];
+      const compatible = dt ? matches.filter(o => o.cargoType === dt || o.cargoType === 3) : matches;
+      return {
+        warehouse: w,
+        matches: matches,
+        matchCount: matches.length,
+        compatibleMatches: compatible,
+        compatibleCount: compatible.length
+      };
+    }).filter(Boolean);
+    
+    // Display results
+    renderQueryResults(results, warehouseNames, queryDate);
+    
+    // Send Feishu notification if any found
+    const availableWarehouses = results.filter(r => r.matchCount > 0);
+    showQueryStatus('✅ 查询完成');
+    renderTasks();
+    
+  } catch(e) {
+    showQueryStatus('❌ 查询异常：' + e.message);
+    toast('查询异常', 'error');
+  }
+}
+
+function showQueryStatus(msg) {
+  const el = document.getElementById('queryStatus');
+  const textEl = document.getElementById('queryStatusText');
+  el.style.display = 'block';
+  textEl.textContent = msg;
+}
+
+function createTimedTask() {
+  const selected = state.selectedWarehouses;
+  
+  if (selected.length === 0) {
+    toast('请先勾选仓库', 'error');
+    return;
+  }
+  
+  const queryDate = document.getElementById('queryDate').value;
+  if (!queryDate) {
+    toast('请选择日期', 'error');
+    return;
+  }
+  
+  const warehouseNames = selected.map(i => state.warehouses[i]?.name).filter(Boolean);
+  const warehouseRefs = selected.map(i => state.warehouses[i]?.name || '').filter(Boolean);
+  
+  // 获取配送方式（用第一个选中仓库的配送方式）
+  const firstWh = state.warehouses[selected[0]];
+  const deliveryType = firstWh ? (firstWh.deliveryType || '箱子') : '箱子';
+  
+  fetch('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      warehouses: warehouseRefs,
+      warehouseNames: warehouseNames,
+      date: queryDate,
+      deliveryType: deliveryType
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      toast('✅ 定时任务已创建，每1小时自动检查');
+      renderTasks();
+    } else if (data.status === 'duplicate') {
+      toast('⚠️ 该任务已存在', 'warning');
+      switchTab('history', document.querySelectorAll('.tab-btn')[3]);
+    } else {
+      toast('❌ 创建失败: ' + (data.error || '未知错误'), 'error');
+    }
+  })
+  .catch(() => toast('❌ 网络错误', 'error'));
+}
+
+
+
+function renderQueryResults(results, warehouseNames, queryDate) {
+  const container = document.getElementById('queryResultContent');
+  const timeEl = document.getElementById('queryTime');
+  const resultsEl = document.getElementById('queryResults');
+  
+  timeEl.textContent = (queryDate || '') + ' ' + new Date().toLocaleString('zh-CN', { hour12: false });
+  resultsEl.style.display = 'block';
+  
+  const available = results.filter(r => r.matchCount > 0);
+  const unavailable = results.filter(r => r.matchCount === 0);
+  
+  let html = '';
+  
+  // Date header
+  html += `<div style="text-align:center;margin-bottom:16px;padding:8px;background:var(--primary-bg);border-radius:8px;font-size:16px;font-weight:600;color:var(--primary);">
+    📅 ${queryDate || '未选择日期'}
+  </div>`;
+  
+  // Summary
+  html += `<div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+    <div style="background:var(--green-bg);padding:10px 16px;border-radius:8px;flex:1;min-width:120px;">
+      <div style="font-size:12px;color:var(--green);">✅ 系统中存在</div>
+      <div style="font-size:24px;font-weight:700;color:var(--green);">${available.length}</div>
+    </div>
+    <div style="background:var(--red-bg);padding:10px 16px;border-radius:8px;flex:1;min-width:120px;">
+      <div style="font-size:12px;color:var(--red);">❌ 未匹配到</div>
+      <div style="font-size:24px;font-weight:700;color:var(--red);">${unavailable.length}</div>
+    </div>
+    <div style="background:var(--primary-bg);padding:10px 16px;border-radius:8px;flex:1;min-width:120px;">
+      <div style="font-size:12px;color:var(--primary);">📊 总计</div>
+      <div style="font-size:24px;font-weight:700;color:var(--primary);">${results.length}</div>
+    </div>
+  </div>`;
+  
+  // Detail list
+  html += '<div style="font-weight:600;margin-bottom:8px;font-size:14px;">明细：</div>';
+  
+  results.forEach(r => {
+    const isAvailable = r.matchCount > 0;
+    const isCompatible = r.compatibleCount > 0;
+    let statusText = '';
+    let statusColor = '';
+    if (isAvailable) {
+      if (isCompatible) {
+        statusText = '✓ 配送方式匹配 | ' + r.matches.map(m => m.name).join(', ');
+        statusColor = 'var(--green)';
+      } else {
+        statusText = '⚠ 找到仓库但配送方式不匹配';
+        statusColor = 'var(--orange)';
+      }
+    } else {
+      statusText = 'WB 系统中未匹配到该仓库';
+      statusColor = 'var(--text-muted)';
+    }
+    
+    html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;border-radius:8px;background:${isAvailable ? 'var(--green-bg)' : 'var(--surface2)'};">
+      <span style="font-size:18px;">${isAvailable ? (isCompatible ? '✅' : '⚠️') : '❌'}</span>
+      <div style="flex:1;">
+        <div style="font-weight:500;">${escapeHtml(r.warehouse.name)} <span style="font-size:11px;color:var(--text-muted);">${escapeHtml(r.warehouse.deliveryType || '箱子')}</span></div>
+        <div style="font-size:12px;color:${statusColor};">${statusText}</div>
+      </div>
+      ${isAvailable ? `<span style="font-size:12px;background:var(--green);color:white;padding:2px 8px;border-radius:4px;">${r.matches.length} 个匹配</span>` : ''}
+    </div>`;
+  });
+  
+  container.innerHTML = html;
+}
+
+async function sendFeishuNotification(title, content) {
+  if (!state.feishuWebhook) return;
+  
+  const resp = await fetch('/api/send-feishu', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      webhook: state.feishuWebhook,
+      title: title,
+      content: content
+    })
+  });
+  
+  const result = await resp.json();
+  if (!result.success) {
+    throw new Error(result.error || '发送失败');
+  }
+}
+// History
+// ===========================
+function renderTasks() {
+  const container = document.getElementById('taskList');
+  
+  fetch('/api/tasks')
+    .then(r => r.json())
+    .then(data => {
+      const tasks = data.tasks || [];
+      if (tasks.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">⏱</div><p>暂无定时任务，在「查询监控」中选择仓库和日期后点击「定时查询」创建</p></div>';
+        return;
+      }
+      
+      container.innerHTML = tasks.map(t => {
+        const isEnabled = t.enabled;
+        const warehouses = (t.warehouseNames || t.warehouses || []).join('、');
+        const lastRun = t.lastRunAt ? new Date(t.lastRunAt).toLocaleString('zh-CN', { hour12: false }) : '尚未执行';
+        const created = t.createdAt ? new Date(t.createdAt).toLocaleString('zh-CN', { hour12: false }) : '';
+        return `
+          <div class="task-item" style="display:flex;align-items:center;gap:10px;padding:12px 16px;margin-bottom:8px;background:var(--surface2);border-radius:10px;border:1px solid var(--border);">
+            <div style="flex:1;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <span class="badge ${isEnabled ? 'badge-green' : 'badge-red'}">${isEnabled ? '运行中' : '已暂停'}</span>
+                <span style="font-weight:500;">📅 ${t.date || '?'}</span>
+                <span style="font-size:13px;color:var(--text-secondary);">📦 ${t.deliveryType || '箱子'}</span>
+              </div>
+              <div style="font-size:13px;color:var(--text-secondary);">🏭 ${warehouses}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">⏱ 上次执行：${lastRun}${created ? ' | 创建于 ' + created : ''}</div>
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0;">
+              <button class="btn btn-sm ${isEnabled ? 'btn-secondary' : 'btn-primary'}" onclick="toggleTask('${t.id}')" title="${isEnabled ? '暂停' : '启用'}">
+                ${isEnabled ? '⏸' : '▶️'}
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')" title="删除">
+                🗑️
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    })
+    .catch(() => {
+      container.innerHTML = '<div class="empty-state"><div class="icon">❌</div><p>加载任务失败</p></div>';
+    });
+}
+
+function toggleTask(taskId) {
+  fetch('/api/tasks', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: taskId, action: 'toggle' })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      renderTasks();
+      toast('✅ 已更新任务状态');
+    } else {
+      toast('❌ 操作失败', 'error');
+    }
+  })
+  .catch(() => toast('❌ 网络错误', 'error'));
+}
+
+function deleteTask(taskId) {
+  if (!confirm('确定删除此定时任务？')) return;
+  fetch('/api/tasks?id=' + taskId, {
+    method: 'DELETE'
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      renderTasks();
+      toast('已删除任务');
+    } else {
+      toast('❌ 删除失败', 'error');
+    }
+  })
+  .catch(() => toast('❌ 网络错误', 'error'));
+}
+
+// ===========================
+// Settings
+// ===========================
+function renderSettings() {
+  document.getElementById('feishuWebhook').value = state.feishuWebhook || '';
+}
+
+function saveAll() {
+  state.feishuWebhook = document.getElementById('feishuWebhook').value.trim();
+  saveState();
+  syncWarehousesToServer();
+  toast('💾 设置已保存');
+}
+
+async function testFeishu() {
+  const webhook = document.getElementById('feishuWebhook').value.trim();
+  if (!webhook) {
+    toast('请先输入飞书 Webhook URL', 'error');
+    return;
+  }
+  
+  const resultEl = document.getElementById('feishuTestResult');
+  resultEl.className = 'test-result';
+  resultEl.textContent = '⏳ 发送测试消息...';
+  resultEl.style.display = 'block';
+  
+  try {
+    const resp = await fetch('/api/send-feishu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        webhook: webhook,
+        title: '✅ WB 仓库预约 - 测试消息',
+        content: '这是一条测试消息\n如果收到这条消息，说明飞书机器人配置正常 🦊'
+      })
+    });
+    const result = await resp.json();
+    
+    if (result.success) {
+      resultEl.className = 'test-result success';
+      resultEl.textContent = '✅ 发送成功！请检查飞书';
+    } else {
+      resultEl.className = 'test-result fail';
+      resultEl.textContent = '❌ 发送失败：' + (result.error || '未知错误');
+    }
+  } catch(e) {
+    resultEl.className = 'test-result fail';
+    resultEl.textContent = '❌ 请求失败：' + e.message;
+  }
+}
+
+// ===========================
+// Auto Refresh
+// ===========================
+
+
+// ===========================
+// API calls to server
+// ===========================
+// Server-side endpoints are called via /api/*
+
+// ===========================
+// Helpers
+// ===========================
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+// ===========================
+// Autosave on input changes
+// ===========================
+document.addEventListener('DOMContentLoaded', async function() {
+  // 优先从服务器加载仓库列表
+  const loaded = await loadWarehousesFromServer();
+  if (!loaded) {
+    loadState();
+  }
+  renderBooking();
+  renderWarehouseManagement();
+  renderSettings();
+  renderTasks();
+
+  
+  // Save on feishu webhook changes
+  document.getElementById('feishuWebhook').addEventListener('change', function() {
+    state.feishuWebhook = this.value.trim();
+    saveState();
+    syncWarehousesToServer();
+  });
+  
+  // Refresh on visibility change (user comes back)
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+      renderBooking();
+    }
+  });
+});
+
+function debounce(fn, delay) {
+  let timer;
+  return function() {
+    clearTimeout(timer);
+    timer = setTimeout(fn, delay);
+  };
+}
+
+
+
+function logout() {
+  document.cookie = "wb_session=; Path=/; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  window.location.href = "/login.html";
+}
+
+
+// ====== Sidebar ======
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const mainContent = document.getElementById('mainContent');
+  sidebar.classList.toggle('collapsed');
+  mainContent.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('wb_sidebar_collapsed', sidebar.classList.contains('collapsed'));
+}
+
+function initSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const mainContent = document.getElementById('mainContent');
+  const collapsed = localStorage.getItem('wb_sidebar_collapsed') === 'true';
+  if (collapsed) {
+    sidebar.classList.add('collapsed');
+    mainContent.classList.add('sidebar-collapsed');
+  }
+}
+document.addEventListener('DOMContentLoaded', initSidebar);
+</script>
+</div><!-- end main-content -->
+</body>
+</html>
