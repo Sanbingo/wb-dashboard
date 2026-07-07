@@ -511,6 +511,7 @@ input:focus, textarea:focus, select:focus {
 </style>
 </head>
 <body>
+<!-- cache-bust: 412609 -->
 <!-- Sidebar -->
 <div class="sidebar collapsed" id="sidebar">
   <div class="sidebar-header">
@@ -536,6 +537,10 @@ input:focus, textarea:focus, select:focus {
     <a href="wb-settings.html" class="nav-item" data-page="settings">
       <span class="nav-icon">⚙️</span>
       <span class="nav-label">设置</span>
+    </a>
+    <a href="http://47.101.61.200:9999/" class="nav-item" target="_blank" data-page="finance">
+      <span class="nav-icon">💰</span>
+      <span class="nav-label">财务工具</span>
     </a>
   </nav>
   <div class="sidebar-footer">
@@ -1110,13 +1115,6 @@ async function startQuery() {
     
     // Send Feishu notification if any found
     const availableWarehouses = results.filter(r => r.matchCount > 0);
-    if (availableWarehouses.length > 0 && state.feishuWebhook) {
-      const names = availableWarehouses.map(r => r.warehouse.name).join('、');
-      await sendFeishuNotification('✅ ' + queryDate + ' 可预约仓库', 
-        `🏭 以下仓库在 WB 系统中已就绪：${names}\n📊 共查询 ${warehouseNames.length} 个仓库，其中 ${availableWarehouses.length} 个可用`);
-      toast('✅ 已通知飞书');
-    }
-    
     showQueryStatus('✅ 查询完成');
     renderTasks();
     
