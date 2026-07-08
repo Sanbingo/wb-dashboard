@@ -63,3 +63,8 @@ scripts/install-cron.sh
 scripts/clean-session-locks.sh
 scripts/refresh-data.sh
 scripts/task_manager.py
+
+# 配置文件（含密钥）
+config.py
+scripts/config.py
+secrets/

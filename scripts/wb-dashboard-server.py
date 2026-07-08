@@ -33,7 +33,7 @@ SESSION_TTL = 86400  # 24小时
 LOGIN_USER = 'WB'
 LOGIN_PASS = '000111'
 
-PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.html', '/api/wb-daily', '/api/mappings', '/api/wb-inventory', '/api/wb-inventory-sizes']
+PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.html', '/wb-booking.html', '/api/wb-daily', '/api/mappings', '/api/wb-offices', '/api/send-feishu', '/api/warehouses', '/api/tasks', '/api/wb-inventory', '/api/wb-inventory-sizes']
 
 COST_PRICE_FILE = os.path.join(DATA_DIR, 'cost-prices.json')
 
@@ -171,6 +171,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_wb_inventory_sizes(params)
         elif path == '/api/cost-price':
             self.handle_get_cost_prices()
+        elif path == '/api/wb-offices':
+            self.handle_wb_offices()
+        elif path == '/api/warehouses':
+            self.handle_get_warehouses()
+        elif path == '/api/tasks':
+            self.handle_get_tasks()
         elif path == '/api/mappings':
             self.handle_get_mappings()
         elif path == '/':
@@ -735,6 +741,202 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json({'status': 'ok'})
         except Exception as e:
             self.send_json({'error': str(e)})
+    
+    def handle_wb_offices(self):
+        """获取WB仓库/办公室列表"""
+        import urllib.request
+        import ssl as _ssl
+        try:
+            config_path = os.path.join(WORKSPACE, 'config.py')
+            cfg_globals = {}
+            with open(config_path) as f:
+                exec(f.read(), cfg_globals)
+            token_file = cfg_globals.get('WB_TOKEN_FILE', '/opt/wb-scripts/secrets/wb-api.json')
+            with open(token_file) as f:
+                cfg = json.load(f)
+            token = cfg['jwt'].strip()
+            ctx = _ssl._create_unverified_context()
+            req = urllib.request.Request(
+                'https://marketplace-api.wildberries.ru/api/v3/offices', method='GET')
+            req.add_header('Authorization', token)
+            resp = urllib.request.urlopen(req, timeout=15, context=ctx)
+            offices = json.loads(resp.read().decode('utf-8'))
+            self.send_json({'offices': offices, 'total': len(offices)})
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode() if hasattr(e, 'read') else str(e)
+            self.send_json({'error': 'WB API error: ' + str(e.code) + ' ' + err_body[:200]}, 500)
+        except Exception as e:
+            self.send_json({'error': str(e)}, 500)
+    
+    def handle_send_feishu(self):
+        """通过飞书Webhook发送消息"""
+        import urllib.request
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length).decode('utf-8')
+            data = json.loads(body)
+            webhook = data.get('webhook', '').strip()
+            title = data.get('title', 'WB 通知')
+            content = data.get('content', '')
+            if not webhook:
+                self.send_json({'success': False, 'error': 'webhook为空'})
+                return
+            msg_data = {
+                'msg_type': 'interactive',
+                'card': {
+                    'header': {'title': {'tag': 'plain_text', 'content': title}, 'template': 'blue'},
+                    'elements': [{'tag': 'markdown', 'content': content}]
+                }
+            }
+            payload = json.dumps(msg_data).encode('utf-8')
+            req = urllib.request.Request(webhook, data=payload, method='POST')
+            req.add_header('Content-Type', 'application/json; charset=utf-8')
+            resp = urllib.request.urlopen(req, timeout=10)
+            result = json.loads(resp.read().decode('utf-8'))
+            if result.get('code') == 0:
+                self.send_json({'success': True})
+            else:
+                self.send_json({'success': False, 'error': result.get('msg', '发送失败')})
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode() if hasattr(e, 'read') else str(e)
+            self.send_json({'success': False, 'error': 'HTTP ' + str(e.code) + ': ' + err_body[:200]})
+        except Exception as e:
+            self.send_json({'success': False, 'error': str(e)})
+    
+    def handle_get_warehouses(self):
+        """获取仓库列表"""
+        if os.path.exists(WAREHOUSE_FILE):
+            try:
+                with open(WAREHOUSE_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                self.send_json(data)
+                return
+            except:
+                pass
+        self.send_json({'warehouses': [], 'settings': {}})
+    
+    def handle_save_warehouses(self):
+        """保存仓库列表"""
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length).decode('utf-8')
+            data = json.loads(body)
+            with open(WAREHOUSE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            self.send_json({'status': 'ok'})
+        except Exception as e:
+            self.send_json({'error': str(e)}, 500)
+    
+    def handle_get_tasks(self):
+        """获取定时任务列表"""
+        if os.path.exists(TASKS_FILE):
+            try:
+                with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                self.send_json(data)
+                return
+            except:
+                pass
+        self.send_json({'tasks': []})
+    
+    def handle_create_task(self):
+        """创建定时任务"""
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length).decode('utf-8')
+            data = json.loads(body)
+            tasks_data = {'tasks': []}
+            if os.path.exists(TASKS_FILE):
+                try:
+                    with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                        tasks_data = json.load(f)
+                except:
+                    pass
+            new_warehouses = sorted(data.get('warehouses', []))
+            new_date = data.get('date', '')
+            for t in tasks_data.get('tasks', []):
+                if t.get('date') == new_date and sorted(t.get('warehouses', [])) == new_warehouses:
+                    self.send_json({'status': 'duplicate', 'task': t})
+                    return
+            task = {
+                'id': str(uuid.uuid4())[:8],
+                'warehouses': data.get('warehouses', []),
+                'warehouseNames': data.get('warehouseNames', []),
+                'date': new_date,
+                'deliveryType': data.get('deliveryType', '箱子'),
+                'enabled': True,
+                'createdAt': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'lastRunAt': None,
+            }
+            tasks_data['tasks'].append(task)
+            with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(tasks_data, f, ensure_ascii=False, indent=2)
+            self.send_json({'status': 'ok', 'task': task})
+        except Exception as e:
+            self.send_json({'error': str(e)}, 500)
+    
+    def do_DELETE(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        params = urllib.parse.parse_qs(parsed.query)
+        if not self.require_auth():
+            self.send_json({'error': 'unauthorized'}, 401)
+            return
+        if path == '/api/tasks':
+            task_id = params.get('id', [None])[0]
+            if not task_id:
+                self.send_json({'error': 'task id required'}, 400)
+                return
+            try:
+                tasks_data = {'tasks': []}
+                if os.path.exists(TASKS_FILE):
+                    with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                        tasks_data = json.load(f)
+                tasks_data['tasks'] = [t for t in tasks_data.get('tasks', []) if t.get('id') != task_id]
+                with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(tasks_data, f, ensure_ascii=False, indent=2)
+                self.send_json({'status': 'ok'})
+            except Exception as e:
+                self.send_json({'error': str(e)}, 500)
+        else:
+            self.send_error(404)
+    
+    def do_PUT(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if not self.require_auth():
+            self.send_json({'error': 'unauthorized'}, 401)
+            return
+        if path == '/api/tasks':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(length).decode('utf-8')
+                data = json.loads(body)
+                action = data.get('action', '')
+                task_id = data.get('id', '')
+                if not task_id:
+                    self.send_json({'error': 'task id required'}, 400)
+                    return
+                tasks_data = {'tasks': []}
+                if os.path.exists(TASKS_FILE):
+                    with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                        tasks_data = json.load(f)
+                for t in tasks_data.get('tasks', []):
+                    if t.get('id') == task_id:
+                        if action == 'enable':
+                            t['enabled'] = True
+                        elif action == 'disable':
+                            t['enabled'] = False
+                        elif action == 'delete':
+                            tasks_data['tasks'].remove(t)
+                        break
+                with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(tasks_data, f, ensure_ascii=False, indent=2)
+                self.send_json({'status': 'ok'})
+            except Exception as e:
+                self.send_json({'error': str(e)}, 500)
+        else:
+            self.send_error(404)
     
     def send_redirect(self, location):
         self.send_response(302)
