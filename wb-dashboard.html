@@ -248,6 +248,21 @@ body {
 .loading { opacity: 0.6; pointer-events: none; }
 
 /* Summary Cards */
+.auto-refresh-indicator {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  margin-left: 8px;
+  white-space: nowrap;
+  min-width: 72px;
+  text-align: center;
+  cursor: help;
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -517,6 +532,7 @@ tr:hover td { background: #f5f5f5; }
       </span>
       <button class="btn btn-outline" id="loadBtn" onclick="loadData()">📥 查询</button>
       <button class="btn btn-outline" onclick="loadData('yesterday')">📅 昨天</button>
+      <span id="autoRefreshIndicator" class="auto-refresh-indicator" title="自动刷新倒计时">⏱️ --</span>
     </div>
   </div>
 
@@ -594,6 +610,34 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// ====== Auto Refresh (1 hour) ======
+let autoRefreshTimer = null;
+let autoRefreshCountdown = null;
+const AUTO_REFRESH_MS = 3600000; // 1 hour
+
+function startAutoRefresh() {
+  // Clear existing timer
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  if (autoRefreshCountdown) clearInterval(autoRefreshCountdown);
+  
+  // Update countdown every second
+  const indicator = document.getElementById('autoRefreshIndicator');
+  let remaining = AUTO_REFRESH_MS;
+  autoRefreshCountdown = setInterval(function() {
+    remaining -= 1000;
+    if (remaining <= 0) remaining = AUTO_REFRESH_MS;
+    const mins = Math.floor(remaining / 60000);
+    const secs = Math.floor((remaining % 60000) / 1000);
+    indicator.textContent = '⏱️ ' + mins + ':' + String(secs).padStart(2, '0');
+  }, 1000);
+  
+  // Reload data every hour
+  autoRefreshTimer = setInterval(function() {
+    console.log('[AutoRefresh] 1小时已到，自动刷新数据');
+    loadData();
+  }, AUTO_REFRESH_MS);
+}
+
 function initDashboard() {
   const now = new Date();
   const mskNow = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 3 * 3600000);
@@ -601,6 +645,8 @@ function initDashboard() {
   document.getElementById('endDate').value = formatDate(mskNow);
   // Initial load - don't force refresh, use cache for speed
   cachedLoadData();
+  // Start auto-refresh after first load
+  startAutoRefresh();
 }
 
 function cachedLoadData() {
@@ -721,6 +767,9 @@ async function loadData(preset) {
     document.getElementById('tableContainer').innerHTML = 
       `<div class="status-bar error">❌ 加载失败: ${lastError}<br><small>请确保服务器已启动或数据文件存在</small></div>`;
   }
+
+  // Reset auto-refresh timer on manual query
+  startAutoRefresh();
 
   btn.disabled = false;
   btn.innerHTML = '📥 查询';
