@@ -248,19 +248,12 @@ body {
 .loading { opacity: 0.6; pointer-events: none; }
 
 /* Summary Cards */
-.auto-refresh-indicator {
+.auto-refresh-hint {
   display: inline-block;
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 4px 10px;
-  margin-left: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 10px;
   white-space: nowrap;
-  min-width: 72px;
-  text-align: center;
-  cursor: help;
 }
 
 .cards {
@@ -523,7 +516,7 @@ tr:hover td { background: #f5f5f5; }
 <div class="main-content sidebar-collapsed" id="mainContent">
 <div class="container">
   <div class="header">
-    <h1>📊 WB 销售日报 <small id="reportDate"></small></h1>
+    <h1>📊 WB 销售日报 <small id="reportDate"></small> <span id="autoRefreshHint" class="auto-refresh-hint">🔄 每1小时自动刷新</span></h1>
     <div class="date-controls">
       <span class="date-range">
         <input type="date" id="startDate">
@@ -532,7 +525,7 @@ tr:hover td { background: #f5f5f5; }
       </span>
       <button class="btn btn-outline" id="loadBtn" onclick="loadData()">📥 查询</button>
       <button class="btn btn-outline" onclick="loadData('yesterday')">📅 昨天</button>
-      <span id="autoRefreshIndicator" class="auto-refresh-indicator" title="自动刷新倒计时">⏱️ --</span>
+
     </div>
   </div>
 
@@ -610,32 +603,41 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// ====== Auto Refresh (1 hour) ======
+// ====== Auto Refresh (整点刷新) ======
 let autoRefreshTimer = null;
-let autoRefreshCountdown = null;
-const AUTO_REFRESH_MS = 3600000; // 1 hour
+let autoRefreshTimeout = null;
+
+function clearAutoRefresh() {
+  if (autoRefreshTimeout) {
+    clearTimeout(autoRefreshTimeout);
+    autoRefreshTimeout = null;
+  }
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+}
 
 function startAutoRefresh() {
-  // Clear existing timer
-  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
-  if (autoRefreshCountdown) clearInterval(autoRefreshCountdown);
-  
-  // Update countdown every second
-  const indicator = document.getElementById('autoRefreshIndicator');
-  let remaining = AUTO_REFRESH_MS;
-  autoRefreshCountdown = setInterval(function() {
-    remaining -= 1000;
-    if (remaining <= 0) remaining = AUTO_REFRESH_MS;
-    const mins = Math.floor(remaining / 60000);
-    const secs = Math.floor((remaining % 60000) / 1000);
-    indicator.textContent = '⏱️ ' + mins + ':' + String(secs).padStart(2, '0');
-  }, 1000);
-  
-  // Reload data every hour
-  autoRefreshTimer = setInterval(function() {
-    console.log('[AutoRefresh] 1小时已到，自动刷新数据');
+  clearAutoRefresh();
+
+  // 计算距离下一个整点(0分0秒)还有多少毫秒
+  var now = new Date();
+  var nextHour = new Date(now);
+  nextHour.setHours(now.getHours() + 1, 0, 0, 0);
+  var msToNextHour = nextHour.getTime() - now.getTime();
+
+  // 先等到下一个整点，之后每1小时刷新一次
+  autoRefreshTimeout = setTimeout(function() {
+    autoRefreshTimeout = null;
+    console.log('[AutoRefresh] 整点已到，自动刷新数据');
     loadData();
-  }, AUTO_REFRESH_MS);
+    // 到整点后，改为每小时轮询
+    autoRefreshTimer = setInterval(function() {
+      console.log('[AutoRefresh] 1小时已到，自动刷新数据');
+      loadData();
+    }, 3600000);
+  }, msToNextHour);
 }
 
 function initDashboard() {

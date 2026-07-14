@@ -36,6 +36,7 @@ LOGIN_PASS = '000111'
 PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.html', '/wb-booking.html', '/api/wb-daily', '/api/mappings', '/api/wb-offices', '/api/send-feishu', '/api/warehouses', '/api/tasks', '/api/wb-inventory', '/api/wb-inventory-sizes']
 
 COST_PRICE_FILE = os.path.join(DATA_DIR, 'cost-prices.json')
+TASKS_FILE = os.path.join(DATA_DIR, 'tasks.json')
 
 
 def load_sessions():
@@ -976,7 +977,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
     
     def log_message(self, format, *args):
         ts = datetime.now().strftime('%H:%M:%S')
-        print(f'[{ts}] {args[0]} {args[1]} {args[2]}')
+        if len(args) >= 3:
+            print(f'[{ts}] {args[0]} {args[1]} {args[2]}')
+        elif len(args) >= 1:
+            parts = ' '.join(str(a) for a in args)
+            print(f'[{ts}] {parts}')
+        else:
+            print(f'[{ts}] {format}')
 
 
 def main():

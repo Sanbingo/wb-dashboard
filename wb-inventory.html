@@ -275,7 +275,7 @@ function loadInventory() {
   
   var xhr = new XMLHttpRequest();
   xhr.open('GET', '/api/wb-inventory', true);
-  xhr.timeout = 25000;
+  xhr.timeout = 120000;
   
   xhr.onload = function() {
     queryBtn.disabled = false;
@@ -657,7 +657,7 @@ function getProductByAbsIndex(idx) {
 function fetchSizes(product, index) {
   var xhr = new XMLHttpRequest();
   xhr.open('GET', '/api/wb-inventory-sizes?nmId=' + product.nmId, true);
-  xhr.timeout = 15000;
+  xhr.timeout = 45000;
   xhr.onload = function() {
     try {
       if (xhr.status === 200) {
