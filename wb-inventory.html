@@ -70,6 +70,10 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 .cost-input { background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; color: var(--text); font-size: 13px; width: 80px; font-family: 'SF Mono', monospace; text-align: right; }
 .cost-input:focus { outline: none; border-color: var(--accent); background: var(--bg2); }
 .cost-input.saved { border-color: var(--green); }
+.manual-input { background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; color: var(--text); font-size: 13px; width: 80px; font-family: 'SF Mono', monospace; text-align: right; }
+.manual-input:focus { outline: none; border-color: var(--accent); background: var(--bg2); }
+.manual-input.saved { border-color: var(--green); }
+.manual-input::placeholder { color: var(--text2); opacity: .6; }
 .size-detail { display: none; }
 .size-detail.visible { display: table-row; }
 .size-detail td { padding: 8px 12px 8px 48px; background: #fafafa; font-size: 13px; }
@@ -95,7 +99,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 .page-btn:hover { border-color: var(--accent); color: var(--accent); }
 .page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .page-btn:disabled { opacity: .4; cursor: not-allowed; }
-@media (max-width: 768px) { .container { padding: 12px; } .cost-input { width: 60px; } }
+@media (max-width: 768px) { .container { padding: 12px; } .cost-input { width: 60px; } .manual-input { width: 60px; } }
 :root {
   --sidebar-w: 220px;
   --sidebar-collapsed-w: 56px;
@@ -523,6 +527,7 @@ function renderProducts(products) {
     '<th style="text-align:right">展示价</th>' +
     '<th style="text-align:right">成本价</th>' +
     '<th style="text-align:right">库存</th>' +
+    '<th style="text-align:right">手动库存</th>' +
     '<th style="text-align:right;cursor:pointer;user-select:none" onclick="toggleSort()" title="点击切换排序">日均订单 <span id="sortArrow">' + (sortDirection === 'desc' ? '▼' : '▲') + '</span></th>' +
     '<th style="text-align:right">周转(天)</th>' +
     '<th style="text-align:right">可售天数</th>' +
@@ -546,11 +551,12 @@ function renderProducts(products) {
     
     html += '<tr class="product-row" data-index="' + absIdx + '" onclick="' + (hasSizes ? "toggleSize('" + absIdx + "')" : '') + '">';
     html += '<td>' + (hasSizes ? '<span class="expand-icon">&#9654;</span>' : '') + '</td>';
-    html += '<td><div class="product-name">' + nameDisplay + (p.chineseName ? '<span class="eng-name">' + vendorCode + '</span>' : '') + '</div><div class="nm-id">nmId: ' + p.nmId + (p.vendorCode !== p.displayName ? ' | ' + vendorCode : '') + '</div></td>';
+    html += '<td><div class="product-name">' + nameDisplay + '</div><div class="nm-id">nmId: ' + p.nmId + '</div></td>';
     html += '<td style="font-size:12px;color:var(--text2)">' + sizesHtml + '</td>';
     html += '<td class="price-val" style="text-align:right">' + fmtMoney(p.displayPrice) + '</td>';
     html += '<td style="text-align:right"><input class="cost-input" type="number" step="0.01" min="0" value="' + (p.costPrice || '') + '" data-nm="' + p.nmId + '" onclick="event.stopPropagation()" onchange="saveCostPrice(this)" onfocus="this.select()"></td>';
     html += '<td style="text-align:right" class="qty-num ' + qtyClass + '">' + fmtNum(p.totalQty) + '</td>';
+    html += '<td style="text-align:right"><input class="manual-input" type="number" step="1" min="0" placeholder="-" value="' + (p.manualStock === 0 || p.manualStock ? p.manualStock : '') + '" data-nm="' + p.nmId + '" onclick="event.stopPropagation()" onchange="saveManualStock(this)" onfocus="this.select()"></td>';
     html += '<td style="text-align:right">' + (p.weightedAvgOrders ? fmtNum1(p.weightedAvgOrders) : '-') + '</td>';
     html += '<td style="text-align:right">' + (p.turnoverDays ? fmtNum(p.turnoverDays) + '天' : '-') + '</td>';
     
@@ -585,7 +591,7 @@ function renderProducts(products) {
     if (hasSizes) {
       for (var j = 0; j < p.sizes.length; j++) {
         var s = p.sizes[j];
-        html += '<tr class="size-detail" data-parent="' + absIdx + '"><td colspan="12"><div class="size-row">';
+        html += '<tr class="size-detail" data-parent="' + absIdx + '"><td colspan="13"><div class="size-row">';
         html += '<span class="size-tag"><span class="size-name">' + escHtml(s.techSize) + '</span> <span class="size-qty">' + fmtNum(s.totalQty) + '</span></span><div class="wh-list">';
         for (var k = 0; k < s.warehouses.length; k++) {
           if (s.warehouses[k].quantity > 0) html += '<span class="wh-item">' + escHtml(s.warehouses[k].name) + ' <span class="qty">' + s.warehouses[k].quantity + '</span></span>';
@@ -634,7 +640,7 @@ function toggleSize(index) {
       var loadingRow = document.createElement('tr');
       loadingRow.className = 'size-detail visible';
       loadingRow.setAttribute('data-parent', index);
-      loadingRow.innerHTML = '<td colspan="12"><div class="loading-size"><span class="mini-spinner"></span> 加载尺码数据中...</div></td>';
+      loadingRow.innerHTML = '<td colspan="13"><div class="loading-size"><span class="mini-spinner"></span> 加载尺码数据中...</div></td>';
       pr.parentNode.insertBefore(loadingRow, pr.nextSibling);
       if (pr) pr.className = pr.className + ' expanded';
       
@@ -682,7 +688,7 @@ function replaceSizeError(index, msg) {
   if (!table) return;
   var loadingRow = table.querySelector('.size-detail.visible[data-parent="' + index + '"]');
   if (loadingRow) {
-    loadingRow.innerHTML = '<td colspan="12"><div class="loading-size" style="color:var(--red)">❌ ' + msg + '，<a href="javascript:;" onclick="retryFetchSizes(' + index + ')" style="color:var(--accent);text-decoration:underline">点此重试</a></div></td>';
+    loadingRow.innerHTML = '<td colspan="13"><div class="loading-size" style="color:var(--red)">❌ ' + msg + '，<a href="javascript:;" onclick="retryFetchSizes(' + index + ')" style="color:var(--accent);text-decoration:underline">点此重试</a></div></td>';
   }
 }
 
@@ -699,7 +705,7 @@ function retryFetchSizes(index) {
   var loadingRow = document.createElement('tr');
   loadingRow.className = 'size-detail visible';
   loadingRow.setAttribute('data-parent', index);
-  loadingRow.innerHTML = '<td colspan="12"><div class="loading-size"><span class="mini-spinner"></span> 加载尺码数据中...</div></td>';
+  loadingRow.innerHTML = '<td colspan="13"><div class="loading-size"><span class="mini-spinner"></span> 加载尺码数据中...</div></td>';
   pr.parentNode.insertBefore(loadingRow, pr.nextSibling);
   
   var p = getProductByAbsIndex(index);
@@ -756,7 +762,7 @@ function insertSizeRows(product, index) {
     var canSellClass = canSellDays < 0 ? 'qty-low' : (canSellDays < 30 ? 'qty-mid' : 'qty-high');
     var canSellColor = canSellClass === 'qty-low' ? 'var(--red)' : (canSellClass === 'qty-mid' ? 'var(--orange)' : 'var(--green)');
     
-    html += '<tr class="size-detail visible" data-parent="' + index + '"><td colspan="12"><div class="size-row">';
+    html += '<tr class="size-detail visible" data-parent="' + index + '"><td colspan="13"><div class="size-row">';
     html += '<span class="size-tag"><span class="size-name">' + escHtml(s.techSize) + '</span> <span class="size-qty ' + qtyClass + '">' + fmtNum(s.totalQty) + '</span></span>';
     html += '<span style="color:var(--text2);font-size:12px">日均:</span><span style="font-weight:600;font-size:13px">' + (avgOrders ? fmtNum1(avgOrders) : '-') + '</span>';
     html += '<span style="color:var(--text2);font-size:12px">周转:</span><span style="font-weight:600;font-size:13px">' + (turnoverDays ? fmtNum(turnoverDays) + '天' : '-') + '</span>';
@@ -823,6 +829,51 @@ function saveCostPrice(input) {
   }, 600);
 }
 
+var manualTimer = null;
+function saveManualStock(input) {
+  var nmId = input.getAttribute('data-nm');
+  var val = input.value;
+  if (manualTimer) clearTimeout(manualTimer);
+  input.className = input.className.replace(' saved', '');
+  manualTimer = setTimeout(function() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/manual-stock', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function() {
+      var respText = xhr.responseText;
+      if (respText.indexOf('<!DOCTYPE') === 0 || respText.indexOf('<html') === 0) {
+        window.location.href = '/login.html';
+        return;
+      }
+      if (xhr.status === 200) {
+        try {
+          var d = JSON.parse(respText);
+          if (d.status === 'ok') {
+            input.className += ' saved';
+            if (inventoryData && inventoryData.products) {
+              for (var i = 0; i < inventoryData.products.length; i++) {
+                if (String(inventoryData.products[i].nmId) === String(nmId)) {
+                  inventoryData.products[i].manualStock = (val === '' ? '' : parseFloat(val));
+                  break;
+                }
+              }
+            }
+            showStatus('手动库存已保存', 'success');
+          } else {
+            showStatus('保存失败', 'error');
+          }
+        } catch(e) {
+          showStatus('保存失败', 'error');
+        }
+      } else {
+        showStatus('保存失败', 'error');
+      }
+    };
+    xhr.onerror = function() { showStatus('网络错误', 'error'); };
+    xhr.send(JSON.stringify({nmId: parseInt(nmId, 10), manualStock: val === '' ? null : parseFloat(val)}));
+  }, 600);
+}
+
 
 
 function fmtNum(n) { n = n || 0; return n.toLocaleString ? n.toLocaleString('ru-RU') : String(n); }
@@ -861,7 +912,7 @@ function exportExcel() {
   // 列头
   var headers = [
     '序号', 'nmId', '商品名', '供应商代码', '中文名', '展示价(₽)', '成本价(₽)',
-    '库存', '7日订单', '15日订单', '30日订单', '日均订单',
+    '库存', '手动库存', '7日订单', '15日订单', '30日订单', '日均订单',
     '周转(天)', '可售天数', '断货日期', '补货日期', '补货量', '状态'
   ];
   rows.push(headers);
@@ -878,6 +929,7 @@ function exportExcel() {
       p.displayPrice || 0,
       p.costPrice || '',
       p.totalQty || 0,
+      (p.manualStock === 0 || p.manualStock ? p.manualStock : ''),
       p.orders7d || 0,
       p.orders15d || 0,
       p.orders30d || 0,
@@ -905,6 +957,7 @@ function exportExcel() {
     { wch: 12 }, // 展示价
     { wch: 12 }, // 成本价
     { wch: 8 },  // 库存
+    { wch: 10 }, // 手动库存
     { wch: 10 }, // 7日订单
     { wch: 11 }, // 15日订单
     { wch: 11 }, // 30日订单

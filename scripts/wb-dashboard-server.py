@@ -33,9 +33,11 @@ SESSION_TTL = 86400  # 24小时
 LOGIN_USER = 'WB'
 LOGIN_PASS = '000111'
 
-PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.html', '/wb-booking.html', '/api/wb-daily', '/api/mappings', '/api/wb-offices', '/api/send-feishu', '/api/warehouses', '/api/tasks', '/api/wb-inventory', '/api/wb-inventory-sizes']
+PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.html', '/wb-booking.html', '/api/wb-daily', '/api/mappings', '/api/wb-offices', '/api/send-feishu', '/api/warehouses', '/api/tasks', '/api/wb-inventory', '/api/wb-inventory-sizes', '/api/manual-stock']
 
 COST_PRICE_FILE = os.path.join(DATA_DIR, 'cost-prices.json')
+MANUAL_STOCK_FILE = os.path.join(DATA_DIR, 'manual-stocks.json')
+TASKS_FILE = os.path.join(DATA_DIR, 'tasks.json')
 
 
 def load_sessions():
@@ -171,6 +173,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.handle_wb_inventory_sizes(params)
         elif path == '/api/cost-price':
             self.handle_get_cost_prices()
+        elif path == '/api/manual-stock':
+            self.handle_get_manual_stocks()
         elif path == '/api/wb-offices':
             self.handle_wb_offices()
         elif path == '/api/warehouses':
@@ -247,6 +251,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'unauthorized'}, 401)
                 return
             self.handle_save_cost_price()
+        elif path == '/api/manual-stock':
+            if not self.require_auth():
+                self.send_json({'error': 'unauthorized'}, 401)
+                return
+            self.handle_save_manual_stock()
         else:
             self.send_error(404)
     
@@ -304,6 +313,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         cost_prices = json.load(f)
                 except:
                     pass
+
+            # 加载手动库存
+            manual_stocks = {}
+            if os.path.exists(MANUAL_STOCK_FILE):
+                try:
+                    with open(MANUAL_STOCK_FILE, 'r', encoding='utf-8') as f:
+                        manual_stocks = json.load(f)
+                except:
+                    pass
             
             # 检查缓存（1小时有效）
             inventory_cache_file = os.path.join(DATA_DIR, 'inventory-full-cache.json')
@@ -315,6 +333,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     if time.time() - cache_time < 3600:  # 1小时缓存
                         for p in cache_data.get('products', []):
                             p['costPrice'] = cost_prices.get(str(p['nmId']), 0)
+                            p['manualStock'] = manual_stocks.get(str(p['nmId']), '')
                         self.send_json(cache_data)
                         return
                 except:
@@ -401,6 +420,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             'discount': 0,
                             'displayPrice': cp.get('minPrice', 0),
                             'costPrice': cost_prices.get(str(nm_id), 0),
+                            'manualStock': manual_stocks.get(str(nm_id), ''),
                             'orders7d': 0, 'orders15d': 0, 'orders30d': 0,
                             'weightedAvgOrders': 0,
                             'turnoverDays': 0,
@@ -718,6 +738,51 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json({'error': str(e)}, 500)
     
+    def handle_get_manual_stocks(self):
+        """获取所有手动库存配置"""
+        if os.path.exists(MANUAL_STOCK_FILE):
+            try:
+                with open(MANUAL_STOCK_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                self.send_json(data)
+                return
+            except:
+                pass
+        self.send_json({})
+    
+    def handle_save_manual_stock(self):
+        """保存某个商品的手动库存"""
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length).decode('utf-8')
+            data = json.loads(body)
+            nm_id = data.get('nmId')
+            manual_stock = data.get('manualStock', '')
+            
+            if not nm_id:
+                self.send_json({'error': 'nmId required'}, 400)
+                return
+            
+            manual_stocks = {}
+            if os.path.exists(MANUAL_STOCK_FILE):
+                try:
+                    with open(MANUAL_STOCK_FILE, 'r', encoding='utf-8') as f:
+                        manual_stocks = json.load(f)
+                except:
+                    pass
+            
+            if manual_stock is None or manual_stock == '':
+                manual_stocks.pop(str(nm_id), None)
+            else:
+                manual_stocks[str(nm_id)] = float(manual_stock)
+            
+            with open(MANUAL_STOCK_FILE, 'w', encoding='utf-8') as f:
+                json.dump(manual_stocks, f, ensure_ascii=False, indent=2)
+            
+            self.send_json({'status': 'ok'})
+        except Exception as e:
+            self.send_json({'error': str(e)}, 500)
+    
     def handle_get_mappings(self):
         path = os.path.join(DATA_DIR, 'mappings.json')
         if os.path.exists(path):
@@ -976,7 +1041,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
     
     def log_message(self, format, *args):
         ts = datetime.now().strftime('%H:%M:%S')
-        print(f'[{ts}] {args[0]} {args[1]} {args[2]}')
+        if len(args) >= 3:
+            print(f'[{ts}] {args[0]} {args[1]} {args[2]}')
+        elif len(args) >= 1:
+            parts = ' '.join(str(a) for a in args)
+            print(f'[{ts}] {parts}')
+        else:
+            print(f'[{ts}] {format}')
 
 
 def main():
