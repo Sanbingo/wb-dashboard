@@ -788,7 +788,7 @@ function renderAll() {
   document.getElementById('reportDate').textContent = `(MSK ${reportData.reportDate})`;
   // Sync product list to localStorage for settings page
   try {
-    localStorage.setItem('wb_product_list', JSON.stringify(reportData.products || []));
+    localStorage.setItem('wb_product_list_' + (window.WB_STORE || 'wb1'), JSON.stringify(reportData.products || []));
   } catch(e) {}
 }
 

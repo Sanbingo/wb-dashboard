@@ -254,7 +254,7 @@ function fetchProducts() {
   // Try localStorage first, then fallback to API
   var stored = [];
   try {
-    var raw = localStorage.getItem('wb_product_list');
+    var raw = localStorage.getItem('wb_product_list_' + (window.WB_STORE || 'wb1'));
     if (raw) stored = JSON.parse(raw);
   } catch(e) {}
   return Promise.resolve(stored);
