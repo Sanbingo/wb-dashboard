@@ -248,6 +248,14 @@ body {
 .loading { opacity: 0.6; pointer-events: none; }
 
 /* Summary Cards */
+.auto-refresh-hint {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 10px;
+  white-space: nowrap;
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -464,6 +472,7 @@ tr:hover td { background: #f5f5f5; }
 
 </head>
 <body>
+<script src="/wb-store.js"></script>
 <!-- cache-bust: 412609 -->
 
 <!-- Sidebar -->
@@ -508,7 +517,7 @@ tr:hover td { background: #f5f5f5; }
 <div class="main-content sidebar-collapsed" id="mainContent">
 <div class="container">
   <div class="header">
-    <h1>📊 WB 销售日报 <small id="reportDate"></small></h1>
+    <h1>📊 WB 销售日报 <small id="reportDate"></small> <span id="autoRefreshHint" class="auto-refresh-hint">🔄 每1小时自动刷新</span></h1>
     <div class="date-controls">
       <span class="date-range">
         <input type="date" id="startDate">
@@ -517,6 +526,7 @@ tr:hover td { background: #f5f5f5; }
       </span>
       <button class="btn btn-outline" id="loadBtn" onclick="loadData()">📥 查询</button>
       <button class="btn btn-outline" onclick="loadData('yesterday')">📅 昨天</button>
+
     </div>
   </div>
 
@@ -594,6 +604,43 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// ====== Auto Refresh (整点刷新) ======
+let autoRefreshTimer = null;
+let autoRefreshTimeout = null;
+
+function clearAutoRefresh() {
+  if (autoRefreshTimeout) {
+    clearTimeout(autoRefreshTimeout);
+    autoRefreshTimeout = null;
+  }
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+}
+
+function startAutoRefresh() {
+  clearAutoRefresh();
+
+  // 计算距离下一个整点(0分0秒)还有多少毫秒
+  var now = new Date();
+  var nextHour = new Date(now);
+  nextHour.setHours(now.getHours() + 1, 0, 0, 0);
+  var msToNextHour = nextHour.getTime() - now.getTime();
+
+  // 先等到下一个整点，之后每1小时刷新一次
+  autoRefreshTimeout = setTimeout(function() {
+    autoRefreshTimeout = null;
+    console.log('[AutoRefresh] 整点已到，自动刷新数据');
+    loadData();
+    // 到整点后，改为每小时轮询
+    autoRefreshTimer = setInterval(function() {
+      console.log('[AutoRefresh] 1小时已到，自动刷新数据');
+      loadData();
+    }, 3600000);
+  }, msToNextHour);
+}
+
 function initDashboard() {
   const now = new Date();
   const mskNow = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 3 * 3600000);
@@ -601,6 +648,8 @@ function initDashboard() {
   document.getElementById('endDate').value = formatDate(mskNow);
   // Initial load - don't force refresh, use cache for speed
   cachedLoadData();
+  // Start auto-refresh after first load
+  startAutoRefresh();
 }
 
 function cachedLoadData() {
@@ -721,6 +770,9 @@ async function loadData(preset) {
     document.getElementById('tableContainer').innerHTML = 
       `<div class="status-bar error">❌ 加载失败: ${lastError}<br><small>请确保服务器已启动或数据文件存在</small></div>`;
   }
+
+  // Reset auto-refresh timer on manual query
+  startAutoRefresh();
 
   btn.disabled = false;
   btn.innerHTML = '📥 查询';

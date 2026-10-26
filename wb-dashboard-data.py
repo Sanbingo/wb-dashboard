@@ -23,14 +23,39 @@ from datetime import datetime, timezone, timedelta
 MSK_TZ = timezone(timedelta(hours=3))
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config import WB_TOKEN_FILE, LOG_DIR
+try:
+    from config import WB_TOKEN_FILE, LOG_DIR
+except ImportError:
+    WB_TOKEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'secrets', 'wb-api.json')
+    LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
 try:
     from config import WB_PROXY
 except ImportError:
     WB_PROXY = None
+try:
+    from config import STORES
+except ImportError:
+    STORES = {}
+
+DEFAULT_STORE = os.environ.get('WB_STORE', 'wb1')
+CURRENT_STORE = DEFAULT_STORE
+CURRENT_TOKEN_FILE = WB_TOKEN_FILE
 
 LOG_FILE = f"{LOG_DIR}/wb-dashboard.log"
-LOCK_FILE = f"{LOG_DIR}/wb-dashboard.lock"
+
+
+def resolve_store(key):
+    """返回 (store_key, store_conf)。未知 key 回落到默认店铺。"""
+    if key and key in STORES:
+        return key, STORES[key]
+    if not STORES:
+        return key or 'wb1', {'name': key or 'WB店铺1', 'token_file': WB_TOKEN_FILE}
+    first = 'wb1' if 'wb1' in STORES else sorted(STORES.keys())[0]
+    return first, STORES[first]
+
+
+def lock_file_for(key):
+    return os.path.join(LOG_DIR, f'wb-dashboard-{key}.lock')
 
 
 def log(msg):
@@ -40,9 +65,9 @@ def log(msg):
     print(f'[{ts}] {msg}', file=sys.stderr)
 
 
-def acquire_lock():
-    """获取文件锁，防止并发执行"""
-    lock_fd = open(LOCK_FILE, 'w')
+def acquire_lock(key=CURRENT_STORE):
+    """获取文件锁，防止并发执行（按店铺分开）"""
+    lock_fd = open(lock_file_for(key), 'w')
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         return lock_fd
@@ -52,7 +77,7 @@ def acquire_lock():
 
 
 def get_wb_token():
-    with open(WB_TOKEN_FILE) as f:
+    with open(CURRENT_TOKEN_FILE) as f:
         tok = json.load(f)['jwt']
     tok = tok.strip()
     return tok
@@ -62,7 +87,14 @@ def _http_request(method, url, data=None, retries=2):
     """使用 urllib 的 HTTP 请求（兼容 Python 3.6）"""
     import urllib.request
     import urllib.error
-    from urllib.request import Request, urlopen
+    from urllib.request import Request
+
+    # 显式控制代理：WB_PROXY 为空时禁用系统代理（macOS 系统代理会导致 SSL EOF）
+    if WB_PROXY:
+        _opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({'http': WB_PROXY, 'https': WB_PROXY}))
+    else:
+        _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     
     token = get_wb_token()
     last_error = None
@@ -74,9 +106,9 @@ def _http_request(method, url, data=None, retries=2):
             r.add_header('Content-Type', 'application/json')
             if data is not None:
                 body = json.dumps(data).encode('utf-8')
-                resp = urlopen(r, data=body, timeout=25)
+                resp = _opener.open(r, data=body, timeout=25)
             else:
-                resp = urlopen(r, timeout=25)
+                resp = _opener.open(r, timeout=25)
             raw = resp.read().decode('utf-8')
             if raw.strip():
                 result = json.loads(raw)
@@ -265,7 +297,8 @@ def parse_ad_stats(fullstats_data):
     return nm_stats
 
 
-def merge_data(products, nm_stats, nm_to_ads, all_adverts, start_date, end_date):
+def merge_data(products, nm_stats, nm_to_ads, all_adverts, start_date, end_date,
+               store_key=None, store_name=None):
     """
     合并销售数据 + 广告花费数据
     返回完整日报 JSON
@@ -398,6 +431,8 @@ def merge_data(products, nm_stats, nm_to_ads, all_adverts, start_date, end_date)
     report = {
         'generatedAt': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'reportDate': f"{start_date} ~ {end_date}" if start_date != end_date else start_date,
+        'store': store_key or CURRENT_STORE,
+        'storeName': store_name or (STORES.get(CURRENT_STORE, {}) or {}).get('name', CURRENT_STORE),
         'summary': {
             'totalOrders': total_orders,
             'totalAmount': round(total_amount, 2),
@@ -428,11 +463,17 @@ def main():
     parser.add_argument('--start', help='开始日期 (YYYY-MM-DD)')
     parser.add_argument('--end', help='结束日期 (YYYY-MM-DD)，默认同开始日期')
     parser.add_argument('--date', help='单日日期 (YYYY-MM-DD)，默认昨天MSK')
+    parser.add_argument('--store', default=DEFAULT_STORE, help='店铺标识 (wb1/wb2)，默认 wb1')
     parser.add_argument('--output', '-o', help='输出文件路径')
     parser.add_argument('--pretty', action='store_true', default=True, help='美化输出')
     args = parser.parse_args()
 
-    log("=== WB日报数据生成开始 ===")
+    store_key, store_conf = resolve_store(args.store)
+    global CURRENT_STORE, CURRENT_TOKEN_FILE
+    CURRENT_STORE = store_key
+    CURRENT_TOKEN_FILE = store_conf.get('token_file', WB_TOKEN_FILE)
+
+    log(f"=== WB日报数据生成开始 [{store_key} {store_conf.get('name','')}] ===")
 
     # 获取文件锁，防止并发
     lock_fd = acquire_lock()
@@ -466,7 +507,8 @@ def main():
         log(f"解析到 {len(nm_stats)} 个NM有广告花费记录")
 
         # 4. 合并数据
-        report = merge_data(products, nm_stats, nm_to_ads, all_ads, start_date, end_date)
+        report = merge_data(products, nm_stats, nm_to_ads, all_ads, start_date, end_date,
+                            store_key, store_conf.get('name', store_key))
 
         # 5. 数据校验：广告费为0但有订单时发出警告（不阻止输出）
         summary = report['summary']

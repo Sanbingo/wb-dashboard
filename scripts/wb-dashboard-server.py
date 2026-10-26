@@ -23,7 +23,7 @@ from datetime import datetime, timezone, timedelta
 HOST = '0.0.0.0'
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 WORKSPACE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT_DIR = os.path.join(WORKSPACE, 'scripts') if os.path.isdir(os.path.join(WORKSPACE, 'scripts')) else WORKSPACE
+SCRIPT_DIR = WORKSPACE  # 运行时脚本始终用根目录版本（服务器部署结构）
 DATA_DIR = os.path.join(WORKSPACE, 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -38,6 +38,68 @@ PROTECTED_PATHS = ['/wb-dashboard.html', '/wb-settings.html', '/wb-inventory.htm
 COST_PRICE_FILE = os.path.join(DATA_DIR, 'cost-prices.json')
 MANUAL_STOCK_FILE = os.path.join(DATA_DIR, 'manual-stocks.json')
 TASKS_FILE = os.path.join(DATA_DIR, 'tasks.json')
+
+# ===== 多店铺配置 =====
+try:
+    from config import STORES as _CFG_STORES
+except Exception:
+    _CFG_STORES = {}
+
+if not _CFG_STORES:
+    _CFG_STORES = {
+        'wb1': {
+            'name': 'WB店铺1',
+            'token_file': '/opt/wb-scripts/secrets/wb-api.json',
+            'data_dir': DATA_DIR,
+        }
+    }
+
+# 兼容：wb1 固定用 DATA_DIR（保留历史数据），其他店用自己的子目录
+STORES = {}
+for _k, _v in _CFG_STORES.items():
+    _conf = dict(_v)
+    _conf['name'] = _conf.get('name') or _k
+    if _k == 'wb1':
+        _conf['data_dir'] = DATA_DIR
+    else:
+        _conf['data_dir'] = _conf.get('data_dir') or os.path.join(DATA_DIR, _k)
+    STORES[_k] = _conf
+
+STORE_ORDER = ['wb1'] + [k for k in STORES if k != 'wb1']
+STORE_ORDER = [k for k in STORE_ORDER if k in STORES]
+
+
+def get_store(key=None):
+    """返回 (key, conf)，未知 key 回落默认店铺"""
+    if key and key in STORES:
+        return key, STORES[key]
+    return STORE_ORDER[0], STORES[STORE_ORDER[0]]
+
+
+def store_paths(key=None):
+    """返回该店铺的目录与各数据文件路径，目录不存在则创建"""
+    key, conf = get_store(key)
+    d = conf['data_dir']
+    os.makedirs(d, exist_ok=True)
+    return {
+        'key': key,
+        'name': conf.get('name', key),
+        'dir': d,
+        'token_file': conf.get('token_file') or '/opt/wb-scripts/secrets/wb-api.json',
+        'cost': os.path.join(d, 'cost-prices.json'),
+        'manual': os.path.join(d, 'manual-stocks.json'),
+        'tasks': os.path.join(d, 'tasks.json'),
+        'mappings': os.path.join(d, 'mappings.json'),
+        'warehouses': os.path.join(d, 'warehouses.json'),
+        'inventory_cache': os.path.join(d, 'inventory-full-cache.json'),
+    }
+
+
+def stores_public():
+    return [
+        {'key': k, 'name': STORES[k]['name'], 'seller': STORES[k].get('seller', '')}
+        for k in STORE_ORDER
+    ]
 
 
 def load_sessions():
@@ -82,24 +144,26 @@ def check_session(token):
     return False
 
 
-def get_data_file(start_date, end_date=None):
+def get_data_file(store_key, start_date, end_date=None):
+    sp = store_paths(store_key)
     if end_date and end_date != start_date:
         key = f'{start_date}_{end_date}'
     else:
         key = start_date
-    return os.path.join(DATA_DIR, f'wb-daily-{key}.json')
+    return os.path.join(sp['dir'], f'wb-daily-{key}.json')
 
 
-def fetch_data(start_date, end_date=None):
-    """调用数据脚本获取数据"""
+def fetch_data(store_key, start_date, end_date=None):
+    """调用数据脚本获取指定店铺数据"""
     script = os.path.join(SCRIPT_DIR, 'wb-dashboard-data.py')
     if not os.path.exists(script):
         return {'error': f'脚本不存在: {script}'}
     
     try:
-        cmd = ['python3', script, '--date', start_date] if start_date == end_date or not end_date else \
-              ['python3', script, '--start', start_date, '--end', end_date]
-        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+        cmd = ['python3', script, '--store', store_key]
+        cmd += ['--date', start_date] if start_date == end_date or not end_date else \
+               ['--start', start_date, '--end', end_date]
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
         stdout = r.stdout.decode('utf-8', errors='replace') if isinstance(r.stdout, bytes) else r.stdout
         stderr = r.stderr.decode('utf-8', errors='replace') if isinstance(r.stderr, bytes) else r.stderr
         if r.returncode != 0:
@@ -107,7 +171,7 @@ def fetch_data(start_date, end_date=None):
         
         data = json.loads(stdout)
         if isinstance(data, dict) and 'summary' in data:
-            with open(get_data_file(start_date, end_date), 'w', encoding='utf-8') as f:
+            with open(get_data_file(store_key, start_date, end_date), 'w', encoding='utf-8') as f:
                 f.write(stdout)
             return data
         else:
@@ -167,22 +231,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
         
         if path == '/api/wb-daily':
             self.handle_api(params)
+        elif path == '/api/wb-summary':
+            self.handle_summary(params)
+        elif path == '/api/stores':
+            self.send_json({'stores': stores_public(), 'default': STORE_ORDER[0]})
         elif path == '/api/wb-inventory':
-            self.handle_wb_inventory()
+            self.handle_wb_inventory(params)
         elif path == '/api/wb-inventory-sizes':
             self.handle_wb_inventory_sizes(params)
         elif path == '/api/cost-price':
-            self.handle_get_cost_prices()
+            self.handle_get_cost_prices(params)
         elif path == '/api/manual-stock':
-            self.handle_get_manual_stocks()
+            self.handle_get_manual_stocks(params)
         elif path == '/api/wb-offices':
-            self.handle_wb_offices()
+            self.handle_wb_offices(params)
         elif path == '/api/warehouses':
-            self.handle_get_warehouses()
+            self.handle_get_warehouses(params)
         elif path == '/api/tasks':
-            self.handle_get_tasks()
+            self.handle_get_tasks(params)
         elif path == '/api/mappings':
-            self.handle_get_mappings()
+            self.handle_get_mappings(params)
         elif path == '/':
             # Root - redirect to dashboard
             self.send_redirect('/wb-dashboard.html')
@@ -204,6 +272,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         start = params.get('start', [None])[0]
         end = params.get('end', [None])[0]
         date_str = params.get('date', [None])[0]
+        store_key = get_store(params.get('store', [None])[0])[0]
         
         now_utc = datetime.now(timezone.utc)
         if date_str:
@@ -216,7 +285,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         force = params.get('force', [None])[0]
         is_force_refresh = (force == 'true')
         
-        cache_file = get_data_file(start, end)
+        cache_file = get_data_file(store_key, start, end)
         cached_data = None
         if os.path.exists(cache_file):
             try:
@@ -226,17 +295,108 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 pass
         
         if is_force_refresh:
-            data = fetch_data(start, end)
+            data = fetch_data(store_key, start, end)
             if (not data or data.get('error')) and cached_data:
                 data = cached_data
         else:
-            data = cached_data if cached_data else fetch_data(start, end)
+            data = cached_data if cached_data else fetch_data(store_key, start, end)
         
         self.send_json(data)
+
+    def handle_summary(self, params):
+        """跨店铺汇总报表"""
+        start = params.get('start', [None])[0]
+        end = params.get('end', [None])[0]
+        date_str = params.get('date', [None])[0]
+        force = params.get('force', [None])[0] == 'true'
+
+        msk_tz = timezone(timedelta(hours=3))
+        if date_str:
+            start = end = date_str
+        elif not start:
+            start = end = (datetime.now(timezone.utc).astimezone(msk_tz) - timedelta(days=1)).strftime('%Y-%m-%d')
+        elif not end:
+            end = start
+
+        requested = params.get('store', [None])[0]
+        keys = [requested] if requested in STORES else STORE_ORDER
+
+        rows = []
+        merged_products = []
+        totals = {
+            'totalOrders': 0, 'totalAmount': 0.0, 'totalBuyout': 0,
+            'totalBuyoutSum': 0.0, 'totalAdCost': 0.0, 'totalCarts': 0,
+            'totalViews': 0, 'totalProfit': 0.0,
+        }
+
+        for k in keys:
+            sp = store_paths(k)
+            try:
+                cache_file = get_data_file(k, start, end)
+                data = None
+                if os.path.exists(cache_file) and not force:
+                    try:
+                        with open(cache_file, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                    except Exception:
+                        data = None
+                if not data or force:
+                    data = fetch_data(k, start, end)
+            except Exception as e:
+                data = {'error': str(e)}
+
+            if not data or data.get('error') or not data.get('summary'):
+                rows.append({
+                    'key': k, 'name': sp['name'],
+                    'error': (data or {}).get('error', '无数据'),
+                })
+                continue
+
+            s = data['summary']
+            rows.append({
+                'key': k,
+                'name': data.get('storeName') or sp['name'],
+                'orders': s.get('totalOrders', 0),
+                'amount': s.get('totalAmount', 0),
+                'buyout': s.get('totalBuyout', 0),
+                'buyoutSum': s.get('totalBuyoutSum', 0),
+                'adCost': s.get('totalAdCost', 0),
+                'adRatio': s.get('adRatio', 0),
+                'profit': s.get('totalProfit', 0),
+                'carts': s.get('totalCarts', 0),
+                'views': s.get('totalViews', 0),
+                'productCount': s.get('productCount', 0),
+            })
+
+            for key in totals:
+                totals[key] += s.get(key, 0) or 0
+
+            for p in data.get('products', []):
+                item = dict(p)
+                item['store'] = k
+                item['storeName'] = data.get('storeName') or sp['name']
+                merged_products.append(item)
+
+        amount = totals['totalAmount'] or 0
+        buyout_sum = totals['totalBuyoutSum'] or 0
+        totals['adRatio'] = round(totals['totalAdCost'] / amount * 100, 2) if amount else 0
+        totals['adBuyoutRatio'] = round(totals['totalAdCost'] / buyout_sum * 100, 2) if buyout_sum else 0
+        totals['productCount'] = len(merged_products)
+        totals['storeCount'] = len([r for r in rows if not r.get('error')])
+
+        merged_products.sort(key=lambda x: x.get('amount', 0) or 0, reverse=True)
+        self.send_json({
+            'generatedAt': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'reportDate': f'{start} ~ {end}' if start != end else start,
+            'stores': rows,
+            'summary': totals,
+            'products': merged_products[:100],
+        })
     
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        params = urllib.parse.parse_qs(parsed.query)
         
         if path == '/api/login':
             self.handle_login()
@@ -245,17 +405,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not self.require_auth():
                 self.send_json({'error': 'unauthorized'}, 401)
                 return
-            self.handle_save_mappings()
+            self.handle_save_mappings(params)
         elif path == '/api/cost-price':
             if not self.require_auth():
                 self.send_json({'error': 'unauthorized'}, 401)
                 return
-            self.handle_save_cost_price()
+            self.handle_save_cost_price(params)
         elif path == '/api/manual-stock':
             if not self.require_auth():
                 self.send_json({'error': 'unauthorized'}, 401)
                 return
-            self.handle_save_manual_stock()
+            self.handle_save_manual_stock(params)
         else:
             self.send_error(404)
     
@@ -283,19 +443,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json({'success': False, 'error': str(e)})
     
-    def handle_wb_inventory(self):
+    def handle_wb_inventory(self, params=None):
         """获取WB库存数据（含多周期日均订单、断货预测）"""
         import urllib.request
         import ssl
         import time as _time
         
         try:
+            params = params or {}
+            sp = store_paths(params.get('store', [None])[0])
             # 0. 获取JWT token
-            config_path = os.path.join(WORKSPACE, 'config.py')
-            cfg_globals = {}
-            with open(config_path) as f:
-                exec(f.read(), cfg_globals)
-            token_file = cfg_globals.get('WB_TOKEN_FILE', '/opt/wb-scripts/secrets/wb-api.json')
+            token_file = sp['token_file']
             with open(token_file) as f:
                 cfg = json.load(f)
             token = cfg['jwt'].strip()
@@ -307,24 +465,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
             
             # 加载成本价
             cost_prices = {}
-            if os.path.exists(COST_PRICE_FILE):
+            if os.path.exists(sp['cost']):
                 try:
-                    with open(COST_PRICE_FILE, 'r', encoding='utf-8') as f:
+                    with open(sp['cost'], 'r', encoding='utf-8') as f:
                         cost_prices = json.load(f)
                 except:
                     pass
 
             # 加载手动库存
             manual_stocks = {}
-            if os.path.exists(MANUAL_STOCK_FILE):
+            if os.path.exists(sp['manual']):
                 try:
-                    with open(MANUAL_STOCK_FILE, 'r', encoding='utf-8') as f:
+                    with open(sp['manual'], 'r', encoding='utf-8') as f:
                         manual_stocks = json.load(f)
                 except:
                     pass
             
             # 检查缓存（1小时有效）
-            inventory_cache_file = os.path.join(DATA_DIR, 'inventory-full-cache.json')
+            inventory_cache_file = sp['inventory_cache']
             if os.path.exists(inventory_cache_file):
                 try:
                     with open(inventory_cache_file, 'r') as f:
@@ -340,7 +498,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     pass
             
             # 加载中文映射
-            mappings_path = os.path.join(DATA_DIR, 'mappings.json')
+            mappings_path = sp['mappings']
             mappings = {}
             if os.path.exists(mappings_path):
                 try:
@@ -541,9 +699,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             
             config_path = os.path.join(WORKSPACE, 'config.py')
             cfg_globals = {}
-            with open(config_path) as f:
-                exec(f.read(), cfg_globals)
-            token_file = cfg_globals.get('WB_TOKEN_FILE', '/opt/wb-scripts/secrets/wb-api.json')
+            if os.path.exists(config_path):
+                with open(config_path) as f:
+                    exec(f.read(), cfg_globals)
+            sp = store_paths(params.get('store', [None])[0])
+            token_file = sp['token_file']
             with open(token_file) as f:
                 cfg = json.load(f)
             token = cfg['jwt'].strip()
@@ -619,7 +779,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         resp = urllib.request.urlopen(req, timeout=30, context=ctx)
         raw_data = json.loads(resp.read().decode('utf-8'))
         
-        mappings_path = os.path.join(DATA_DIR, 'mappings.json')
+        mappings_path = sp['mappings']
         mappings = {}
         if os.path.exists(mappings_path):
             try:
@@ -692,11 +852,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
     
 
     
-    def handle_get_cost_prices(self):
+    def handle_get_cost_prices(self, params=None):
         """获取所有成本价配置"""
-        if os.path.exists(COST_PRICE_FILE):
+        sp = store_paths((params or {}).get('store', [None])[0])
+        if os.path.exists(sp['cost']):
             try:
-                with open(COST_PRICE_FILE, 'r', encoding='utf-8') as f:
+                with open(sp['cost'], 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 self.send_json(data)
                 return
@@ -704,8 +865,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 pass
         self.send_json({})
     
-    def handle_save_cost_price(self):
+    def handle_save_cost_price(self, params=None):
         """保存某个商品的成本价"""
+        sp = store_paths((params or {}).get('store', [None])[0])
         try:
             length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(length).decode('utf-8')
@@ -719,9 +881,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             
             # 读取现有数据
             cost_prices = {}
-            if os.path.exists(COST_PRICE_FILE):
+            if os.path.exists(sp['cost']):
                 try:
-                    with open(COST_PRICE_FILE, 'r', encoding='utf-8') as f:
+                    with open(sp['cost'], 'r', encoding='utf-8') as f:
                         cost_prices = json.load(f)
                 except:
                     pass
@@ -731,18 +893,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
             else:
                 cost_prices[str(nm_id)] = float(cost_price)
             
-            with open(COST_PRICE_FILE, 'w', encoding='utf-8') as f:
+            with open(sp['cost'], 'w', encoding='utf-8') as f:
                 json.dump(cost_prices, f, ensure_ascii=False, indent=2)
             
             self.send_json({'status': 'ok'})
         except Exception as e:
             self.send_json({'error': str(e)}, 500)
     
-    def handle_get_manual_stocks(self):
+    def handle_get_manual_stocks(self, params=None):
         """获取所有手动库存配置"""
-        if os.path.exists(MANUAL_STOCK_FILE):
+        sp = store_paths((params or {}).get('store', [None])[0])
+        if os.path.exists(sp['manual']):
             try:
-                with open(MANUAL_STOCK_FILE, 'r', encoding='utf-8') as f:
+                with open(sp['manual'], 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 self.send_json(data)
                 return
@@ -750,8 +913,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 pass
         self.send_json({})
     
-    def handle_save_manual_stock(self):
+    def handle_save_manual_stock(self, params=None):
         """保存某个商品的手动库存"""
+        sp = store_paths((params or {}).get('store', [None])[0])
         try:
             length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(length).decode('utf-8')
@@ -764,9 +928,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return
             
             manual_stocks = {}
-            if os.path.exists(MANUAL_STOCK_FILE):
+            if os.path.exists(sp['manual']):
                 try:
-                    with open(MANUAL_STOCK_FILE, 'r', encoding='utf-8') as f:
+                    with open(sp['manual'], 'r', encoding='utf-8') as f:
                         manual_stocks = json.load(f)
                 except:
                     pass
@@ -776,15 +940,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             else:
                 manual_stocks[str(nm_id)] = float(manual_stock)
             
-            with open(MANUAL_STOCK_FILE, 'w', encoding='utf-8') as f:
+            with open(sp['manual'], 'w', encoding='utf-8') as f:
                 json.dump(manual_stocks, f, ensure_ascii=False, indent=2)
             
             self.send_json({'status': 'ok'})
         except Exception as e:
             self.send_json({'error': str(e)}, 500)
     
-    def handle_get_mappings(self):
-        path = os.path.join(DATA_DIR, 'mappings.json')
+    def handle_get_mappings(self, params=None):
+        sp = store_paths((params or {}).get('store', [None])[0])
+        path = sp['mappings']
         if os.path.exists(path):
             try:
                 with open(path, 'r', encoding='utf-8') as f:
@@ -795,28 +960,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 pass
         self.send_json({})
     
-    def handle_save_mappings(self):
+    def handle_save_mappings(self, params=None):
+        sp = store_paths((params or {}).get('store', [None])[0])
         try:
             length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(length).decode('utf-8')
             data = json.loads(body)
-            path = os.path.join(DATA_DIR, 'mappings.json')
+            path = sp['mappings']
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             self.send_json({'status': 'ok'})
         except Exception as e:
             self.send_json({'error': str(e)})
     
-    def handle_wb_offices(self):
+    def handle_wb_offices(self, params=None):
         """获取WB仓库/办公室列表"""
         import urllib.request
         import ssl as _ssl
         try:
-            config_path = os.path.join(WORKSPACE, 'config.py')
-            cfg_globals = {}
-            with open(config_path) as f:
-                exec(f.read(), cfg_globals)
-            token_file = cfg_globals.get('WB_TOKEN_FILE', '/opt/wb-scripts/secrets/wb-api.json')
+            sp = store_paths((params or {}).get('store', [None])[0])
+            token_file = sp['token_file']
             with open(token_file) as f:
                 cfg = json.load(f)
             token = cfg['jwt'].strip()
@@ -868,11 +1031,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json({'success': False, 'error': str(e)})
     
-    def handle_get_warehouses(self):
+    def handle_get_warehouses(self, params=None):
         """获取仓库列表"""
-        if os.path.exists(WAREHOUSE_FILE):
+        sp = store_paths((params or {}).get('store', [None])[0])
+        if os.path.exists(sp['warehouses']):
             try:
-                with open(WAREHOUSE_FILE, 'r', encoding='utf-8') as f:
+                with open(sp['warehouses'], 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 self.send_json(data)
                 return
@@ -880,23 +1044,25 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 pass
         self.send_json({'warehouses': [], 'settings': {}})
     
-    def handle_save_warehouses(self):
+    def handle_save_warehouses(self, params=None):
         """保存仓库列表"""
+        sp = store_paths((params or {}).get('store', [None])[0])
         try:
             length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(length).decode('utf-8')
             data = json.loads(body)
-            with open(WAREHOUSE_FILE, 'w', encoding='utf-8') as f:
+            with open(sp['warehouses'], 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             self.send_json({'status': 'ok'})
         except Exception as e:
             self.send_json({'error': str(e)}, 500)
     
-    def handle_get_tasks(self):
+    def handle_get_tasks(self, params=None):
         """获取定时任务列表"""
-        if os.path.exists(TASKS_FILE):
+        sp = store_paths((params or {}).get('store', [None])[0])
+        if os.path.exists(sp['tasks']):
             try:
-                with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                with open(sp['tasks'], 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 self.send_json(data)
                 return
@@ -904,16 +1070,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 pass
         self.send_json({'tasks': []})
     
-    def handle_create_task(self):
+    def handle_create_task(self, params=None):
         """创建定时任务"""
+        sp = store_paths((params or {}).get('store', [None])[0])
         try:
             length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(length).decode('utf-8')
             data = json.loads(body)
             tasks_data = {'tasks': []}
-            if os.path.exists(TASKS_FILE):
+            if os.path.exists(sp['tasks']):
                 try:
-                    with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                    with open(sp['tasks'], 'r', encoding='utf-8') as f:
                         tasks_data = json.load(f)
                 except:
                     pass
@@ -934,7 +1101,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 'lastRunAt': None,
             }
             tasks_data['tasks'].append(task)
-            with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+            with open(sp['tasks'], 'w', encoding='utf-8') as f:
                 json.dump(tasks_data, f, ensure_ascii=False, indent=2)
             self.send_json({'status': 'ok', 'task': task})
         except Exception as e:
@@ -953,12 +1120,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'task id required'}, 400)
                 return
             try:
+                sp = store_paths(params.get('store', [None])[0])
                 tasks_data = {'tasks': []}
-                if os.path.exists(TASKS_FILE):
-                    with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                if os.path.exists(sp['tasks']):
+                    with open(sp['tasks'], 'r', encoding='utf-8') as f:
                         tasks_data = json.load(f)
                 tasks_data['tasks'] = [t for t in tasks_data.get('tasks', []) if t.get('id') != task_id]
-                with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+                with open(sp['tasks'], 'w', encoding='utf-8') as f:
                     json.dump(tasks_data, f, ensure_ascii=False, indent=2)
                 self.send_json({'status': 'ok'})
             except Exception as e:
@@ -982,9 +1150,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if not task_id:
                     self.send_json({'error': 'task id required'}, 400)
                     return
+                sp = store_paths(params.get('store', [None])[0])
                 tasks_data = {'tasks': []}
-                if os.path.exists(TASKS_FILE):
-                    with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+                if os.path.exists(sp['tasks']):
+                    with open(sp['tasks'], 'r', encoding='utf-8') as f:
                         tasks_data = json.load(f)
                 for t in tasks_data.get('tasks', []):
                     if t.get('id') == task_id:
@@ -995,7 +1164,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         elif action == 'delete':
                             tasks_data['tasks'].remove(t)
                         break
-                with open(TASKS_FILE, 'w', encoding='utf-8') as f:
+                with open(sp['tasks'], 'w', encoding='utf-8') as f:
                     json.dump(tasks_data, f, ensure_ascii=False, indent=2)
                 self.send_json({'status': 'ok'})
             except Exception as e:

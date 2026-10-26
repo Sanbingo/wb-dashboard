@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>WB 全店铺汇总 🦊</title>
+<style>
+:root{
+  --bg:#f0f2f5;--surface:#fff;--border:#e8e8e8;--text:#262626;--text2:#8c8c8c;
+  --accent:#1677ff;--green:#52c41a;--orange:#fa8c16;--red:#ff4d4f;--purple:#722ed1;--cyan:#13c2c2;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.topbar{background:#1a1a2e;color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:50}
+.topbar h1{font-size:18px;font-weight:600}
+.topbar a{color:#a8a8c8;text-decoration:none;font-size:13px;padding:6px 12px;border:1px solid #33335a;border-radius:6px}
+.topbar a:hover{color:#fff;border-color:#6c5ce7}
+.topbar .spacer{flex:1}
+.container{max-width:1400px;margin:0 auto;padding:20px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:18px}
+.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.controls input[type=date]{height:34px;padding:0 10px;border:1px solid #d9d9d9;border-radius:6px;font-size:13px}
+.btn{height:34px;padding:0 16px;border-radius:6px;border:1px solid #d9d9d9;background:#fff;color:#262626;font-size:13px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:disabled{opacity:.6;cursor:default}
+.hint{font-size:12px;color:var(--text2);margin-left:auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;border-top:3px solid var(--accent)}
+.card.green{border-top-color:var(--green)}.card.orange{border-top-color:var(--orange)}
+.card.red{border-top-color:var(--red)}.card.purple{border-top-color:var(--purple)}.card.cyan{border-top-color:var(--cyan)}
+.card .label{font-size:12px;color:var(--text2);margin-bottom:6px}
+.card .value{font-size:22px;font-weight:700;letter-spacing:-.5px}
+.card .sub{font-size:11px;color:var(--text2);margin-top:4px}
+h2{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:10px 12px;text-align:right;border-bottom:1px solid #f0f0f0;white-space:nowrap}
+th{background:#fafafa;color:#595959;font-weight:600;font-size:12px;text-align:right}
+th:first-child,td:first-child{text-align:left}
+tbody tr:hover{background:#fafafa}
+tbody tr.total{background:#f6ffed;font-weight:700}
+tbody tr.total td{border-top:2px solid #b7eb8f}
+.store-link{color:var(--accent);text-decoration:none}
+.store-link:hover{text-decoration:underline}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:#e6f4ff;color:#0958d9}
+.err{color:var(--red);font-size:12px}
+#status{font-size:12px;color:var(--text2)}
+@media(max-width:720px){.container{padding:12px}.hint{display:none}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>📊 全店铺汇总</h1>
+  <span class="spacer"></span>
+  <a href="wb-dashboard.html">← 销售日报</a>
+</div>
+<div class="container">
+  <div class="panel">
+    <div class="controls">
+      <input type="date" id="startDate">
+      <span>~</span>
+      <input type="date" id="endDate">
+      <button class="btn primary" id="loadBtn">📥 查询</button>
+      <button class="btn" onclick="setDay(1)">昨天</button>
+      <button class="btn" onclick="setDay(0)">今天</button>
+      <span class="hint" id="status">选择日期后查询</span>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="label">📦 订单数</div><div class="value" id="vOrders">--</div><div class="sub" id="vStores"></div></div>
+    <div class="card green"><div class="label">💰 销售额</div><div class="value" id="vAmount">--</div><div class="sub" id="vAmountSub"></div></div>
+    <div class="card orange"><div class="label">📢 广告费</div><div class="value" id="vAdCost">--</div><div class="sub" id="vAdCostSub"></div></div>
+    <div class="card red"><div class="label">📊 广告占比</div><div class="value" id="vAdRatio">--</div><div class="sub">广告费 / 销售额</div></div>
+    <div class="card purple"><div class="label">💵 利润</div><div class="value" id="vProfit">--</div><div class="sub">销售额 - 广告费</div></div>
+    <div class="card cyan"><div class="label">🛍️ 商品数</div><div class="value" id="vProducts">--</div><div class="sub">各店铺合计</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>🏬 店铺明细</h2>
+    <div id="storeTable"><div class="hint">暂无数据</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>🏆 商品销售额 Top 50（跨店铺）</h2>
+    <div id="productTable"><div class="hint">暂无数据</div></div>
+  </div>
+</div>
+
+<script>
+var state = { data: null };
+
+function pad(n){ return String(n).padStart(2,'0'); }
+function fmtDate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function mskNow(){ var n=new Date(); return new Date(n.getTime()+n.getTimezoneOffset()*60000+3*3600000); }
+function money(v){ return (Number(v)||0).toLocaleString('ru-RU',{minimumFractionDigits:0,maximumFractionDigits:0})+' ₽'; }
+function num(v){ return (Number(v)||0).toLocaleString('ru-RU'); }
+function pct(v){ return (Number(v)||0).toFixed(1)+'%'; }
+
+function setDay(offset){
+  var d = mskNow(); d.setDate(d.getDate()-offset);
+  document.getElementById('startDate').value = fmtDate(d);
+  document.getElementById('endDate').value = fmtDate(d);
+  load();
+}
+
+function includesToday(s,e){
+  var t = fmtDate(mskNow());
+  return s <= t && e >= t;
+}
+
+async function load(){
+  var s = document.getElementById('startDate').value;
+  var e = document.getElementById('endDate').value;
+  if(!s || !e){ alert('请选择日期'); return; }
+  if(s > e){ alert('开始日期不能晚于结束日期'); return; }
+  var btn = document.getElementById('loadBtn');
+  btn.disabled = true; btn.textContent = '加载中...';
+  document.getElementById('status').textContent = '加载中…（首次拉取两个店铺可能需要 1-2 分钟）';
+  try{
+    var url = '/api/wb-summary?start='+s+'&end='+e+(includesToday(s,e)?'&force=true':'');
+    var r = await fetch(url);
+    var d = await r.json();
+    if(d.error){ throw new Error(d.error); }
+    state.data = d;
+    render(d);
+    document.getElementById('status').textContent = '数据时间：' + (d.generatedAt || '') + '（MSK ' + d.reportDate + '）';
+  }catch(err){
+    document.getElementById('status').textContent = '❌ 加载失败：' + err.message;
+  }finally{
+    btn.disabled = false; btn.textContent = '📥 查询';
+  }
+}
+
+function render(d){
+  var s = d.summary || {};
+  document.getElementById('vOrders').textContent = num(s.totalOrders);
+  document.getElementById('vStores').textContent = (s.storeCount||0) + ' 个店铺';
+  document.getElementById('vAmount').textContent = money(s.totalAmount);
+  document.getElementById('vAmountSub').textContent = '实收 ' + money(s.totalBuyoutSum);
+  document.getElementById('vAdCost').textContent = money(s.totalAdCost);
+  document.getElementById('vAdCostSub').textContent = '广告单 ' + num(s.totalBuyout) + ' 单';
+  document.getElementById('vAdRatio').textContent = pct(s.adRatio);
+  document.getElementById('vProfit').textContent = money(s.totalProfit);
+  document.getElementById('vProducts').textContent = num(s.productCount);
+
+  var rows = d.stores || [];
+  if(!rows.length){ document.getElementById('storeTable').innerHTML = '<div class="hint">暂无数据</div>'; }
+  else{
+    var html = '<table><thead><tr><th>店铺</th><th>订单</th><th>销售额</th><th>广告费</th><th>广告占比</th><th>利润</th><th>商品数</th></tr></thead><tbody>';
+    rows.forEach(function(r){
+      if(r.error){
+        html += '<tr><td>'+r.name+'</td><td colspan="6" class="err">拉取失败：'+r.error+'</td></tr>';
+      }else{
+        var ratioClass = r.adRatio > 15 ? 'style="color:#ff4d4f;font-weight:600"' : (r.adRatio > 10 ? 'style="color:#fa8c16;font-weight:600"' : '');
+        html += '<tr>'
+          + '<td><a class="store-link" href="wb-dashboard.html?store='+encodeURIComponent(r.key)+'">'+r.name+'</a> <span class="badge">'+r.key+'</span></td>'
+          + '<td>'+num(r.orders)+'</td>'
+          + '<td>'+money(r.amount)+'</td>'
+          + '<td>'+money(r.adCost)+'</td>'
+          + '<td '+ratioClass+'>'+pct(r.adRatio)+'</td>'
+          + '<td>'+money(r.profit)+'</td>'
+          + '<td>'+num(r.productCount)+'</td>'
+          + '</tr>';
+      }
+    });
+    html += '<tr class="total"><td>合计</td><td>'+num(s.totalOrders)+'</td><td>'+money(s.totalAmount)+'</td><td>'+money(s.totalAdCost)+'</td><td>'+pct(s.adRatio)+'</td><td>'+money(s.totalProfit)+'</td><td>'+num(s.productCount)+'</td></tr>';
+    html += '</tbody></table>';
+    document.getElementById('storeTable').innerHTML = html;
+  }
+
+  var ps = (d.products || []).slice(0, 50);
+  if(!ps.length){ document.getElementById('productTable').innerHTML = '<div class="hint">暂无商品数据</div>'; return; }
+  var phtml = '<table><thead><tr><th>店铺</th><th>商品</th><th>订单</th><th>销售额</th><th>广告费</th><th>广告占比</th></tr></thead><tbody>';
+  ps.forEach(function(p){
+    phtml += '<tr>'
+      + '<td><a class="store-link" href="wb-dashboard.html?store='+encodeURIComponent(p.store)+'">'+p.storeName+'</a></td>'
+      + '<td title="'+p.vendorCode+'">'+(p.vendorCode||p.nmId)+'</td>'
+      + '<td>'+num(p.orders)+'</td>'
+      + '<td>'+money(p.amount)+'</td>'
+      + '<td>'+money(p.adCost)+'</td>'
+      + '<td>'+pct(p.adRatio)+'</td>'
+      + '</tr>';
+  });
+  phtml += '</tbody></table>';
+  document.getElementById('productTable').innerHTML = phtml;
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  var d = mskNow(); d.setDate(d.getDate()-1);
+  document.getElementById('startDate').value = fmtDate(d);
+  document.getElementById('endDate').value = fmtDate(d);
+  document.getElementById('loadBtn').addEventListener('click', load);
+  load();
+});
+</script>
+</body>
+</html>

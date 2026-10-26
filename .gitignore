@@ -68,3 +68,6 @@ scripts/task_manager.py
 config.py
 scripts/config.py
 secrets/
+
+# Local logs
+logs/

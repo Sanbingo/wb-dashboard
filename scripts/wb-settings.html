@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设置 - WB 销售日报 🦊</title>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --border: #e8e8e8;
+  --text: #262626;
+  --text-secondary: #8c8c8c;
+  --accent: #1677ff;
+  --green: #3fb950;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { display: flex; 
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  
+; min-height: 100vh }
+.container { max-width: 800px; margin: 0 auto; }
+.header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 24px;
+}
+.header h1 { font-size: 22px; display: flex; align-items: center; gap: 8px; }
+.header a {
+  color: var(--accent); text-decoration: none; font-size: 14px;
+  padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px;
+  transition: all 0.2s;
+}
+.header a:hover { border-color: var(--accent); }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 20px; margin-bottom: 16px;
+}
+.card h3 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
+.card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  background: #fafafa; padding: 10px 8px; text-align: left;
+  color: var(--text-secondary); border-bottom: 2px solid var(--border);
+  font-weight: 600;
+}
+td { padding: 8px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+td:first-child { font-size: 12px; color: var(--text-secondary); word-break: break-all; }
+td input {
+  width: 100%; padding: 8px 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); font-size: 13px;
+}
+td input:focus { border-color: var(--accent); outline: none; }
+
+.btn {
+  padding: 8px 20px; border: none; border-radius: 6px;
+  font-size: 14px; cursor: pointer; font-weight: 500; transition: all 0.2s;
+}
+.btn-primary { background: #1677ff; color: white; }
+.btn-primary:hover { background: #4096ff; }
+.btn-outline {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); margin-right: 8px;
+}
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+.actions { margin-top: 16px; text-align: right; }
+.tip {
+  background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--accent);
+  margin-bottom: 16px;
+}
+
+/* ====== Sidebar ====== */
+:root {
+  --sidebar-w: 220px;
+  --sidebar-collapsed-w: 56px;
+  --sidebar-bg: #1a1a2e;
+  --sidebar-hover: #16213e;
+  --sidebar-active: #0f3460;
+  --sidebar-text: #a8a8c8;
+  --sidebar-text-active: #ffffff;
+  --sidebar-accent: #6c5ce7;
+}
+.sidebar {
+  position: fixed;
+  top: 0; left: 0;
+  width: var(--sidebar-w);
+  height: 100vh;
+  height: 100dvh;
+  background: var(--sidebar-bg);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sidebar.collapsed { width: var(--sidebar-collapsed-w); }
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  min-height: 64px;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sidebar-logo .logo-icon { font-size: 24px; flex-shrink: 0; }
+.sidebar-logo .logo-text { transition: opacity 0.2s; }
+.sidebar.collapsed .sidebar-logo .logo-text { opacity: 0; width: 0; overflow: hidden; }
+.sidebar-toggle {
+  background: none; border: none;
+  color: var(--sidebar-text);
+  cursor: pointer; font-size: 18px;
+  padding: 4px; border-radius: 6px;
+  transition: all 0.2s;
+  flex-shrink: 0; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+}
+.sidebar-toggle:hover { color: #fff; background: rgba(255,255,255,0.1); }
+.sidebar-nav { flex: 1; padding: 12px 8px; overflow-y: auto; }
+.sidebar-nav::-webkit-scrollbar { width: 3px; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+.nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 8px;
+  color: var(--sidebar-text); text-decoration: none;
+  font-size: 14px; font-weight: 500;
+  transition: all 0.2s; margin-bottom: 2px;
+  white-space: nowrap; overflow: hidden; cursor: pointer;
+}
+.nav-item:hover { background: var(--sidebar-hover); color: var(--sidebar-text-active); }
+.nav-item.active { background: var(--sidebar-active); color: var(--sidebar-text-active); border-left: 3px solid var(--sidebar-accent); }
+.nav-item .nav-icon { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
+.nav-item .nav-label { transition: opacity 0.2s; }
+.sidebar.collapsed .nav-item .nav-label { opacity: 0; width: 0; overflow: hidden; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 10px 0; }
+.sidebar.collapsed .nav-item.active { border-left: 3px solid transparent; }
+.sidebar-footer { padding: 12px 8px; border-top: 1px solid rgba(255,255,255,0.08); }
+.main-content {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  min-height: 100vh;
+  min-height: 100dvh;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.main-content.sidebar-collapsed { margin-left: var(--sidebar-collapsed-w); }
+@media (max-width: 768px) {
+  .sidebar { width: var(--sidebar-collapsed-w); }
+  .sidebar .sidebar-logo .logo-text,
+  .sidebar .nav-item .nav-label { opacity: 0; width: 0; overflow: hidden; }
+  .sidebar .nav-item { justify-content: center; padding: 10px 0; }
+  .main-content { margin-left: var(--sidebar-collapsed-w); }
+  .sidebar.expanded { width: var(--sidebar-w); box-shadow: 4px 0 20px rgba(0,0,0,0.3); }
+  .sidebar.expanded .sidebar-logo .logo-text,
+  .sidebar.expanded .nav-item .nav-label { opacity: 1; width: auto; overflow: visible; }
+  .sidebar.expanded .nav-item { justify-content: flex-start; padding: 10px 12px; }
+}
+
+</style>
+</head>
+<body>
+<script src="/wb-store.js"></script>
+<!-- cache-bust: 412609 -->
+<!-- Sidebar -->
+<div class="sidebar collapsed" id="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">
+      <span class="logo-icon">🦊</span>
+      <span class="logo-text">WB 工具集</span>
+    </div>
+    <button class="sidebar-toggle" onclick="toggleSidebar()" title="折叠侧栏">☰</button>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="wb-dashboard.html" class="nav-item" data-page="dashboard">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">销售日报</span>
+    </a>
+    <a href="wb-inventory.html" class="nav-item" data-page="inventory">
+      <span class="nav-icon">📦</span>
+      <span class="nav-label">库存分析</span>
+    </a>
+    <a href="wb-booking.html" class="nav-item" data-page="booking">
+      <span class="nav-icon">📅</span>
+      <span class="nav-label">仓库预约</span>
+    </a>
+    <a href="wb-settings.html" class="nav-item active" data-page="settings">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">设置</span>
+    </a>
+    <a href="http://47.101.61.200:9999/" class="nav-item" target="_blank" data-page="finance">
+      <span class="nav-icon">💰</span>
+      <span class="nav-label">财务工具</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="#" onclick="logout()" class="nav-item" style="margin-bottom:0">
+      <span class="nav-icon">⏻</span>
+      <span class="nav-label">退出</span>
+    </a>
+  </div>
+</div>
+
+<div class="main-content sidebar-collapsed" id="mainContent">
+
+<div class="container">
+  <div class="header">
+    <h1>⚙️ 设置</h1>
+    <a href="wb-dashboard.html">← 返回看板</a>
+    <a href="#" onclick="logout()" style="color:var(--text-secondary);font-size:12px;margin-left:8px">退出登录</a>
+  </div>
+
+  <div class="tip">💡 设置商品中文名称后，在看板中会优先显示中文名，留空则显示默认英文名。数据存储在服务器，所有用户共享。</div>
+
+  <div class="card">
+    <h3>📋 产品名称映射</h3>
+    <p>请先在看板页面加载数据后再来设置，商品列表将自动同步。</p>
+    <div id="mappingContainer"><p style="color:var(--text-secondary)">请先打开主看板加载数据...</p></div>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="saveMappings()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var products = [];
+var mappings = {};
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/[&<>"']/g, function(m) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+  });
+}
+
+function fetchMappings() {
+  return fetch('/api/mappings').then(function(r) { return r.json(); });
+}
+
+function fetchProducts() {
+  // Try localStorage first, then fallback to API
+  var stored = [];
+  try {
+    var raw = localStorage.getItem('wb_product_list');
+    if (raw) stored = JSON.parse(raw);
+  } catch(e) {}
+  return Promise.resolve(stored);
+}
+
+function renderMappings() {
+  var container = document.getElementById('mappingContainer');
+  
+  Promise.all([fetchMappings(), fetchProducts()]).then(function(results) {
+    mappings = results[0] || {};
+    products = results[1] || [];
+
+    var codes = [...new Set(products.map(function(p) { return p.vendorCode; }).filter(Boolean))];
+    
+    if (codes.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-secondary);font-size:13px">暂无商品数据。请先打开<a href="wb-dashboard.html" style="color:var(--accent)">主看板</a>加载数据后，再回来设置。</p>';
+      return;
+    }
+
+    var html = '<table><thead><tr><th>英文名称</th><th>中文名称</th></tr></thead><tbody>';
+    codes.forEach(function(code) {
+      html += '<tr>' +
+        '<td>' + escapeHtml(code) + '</td>' +
+        '<td><input type="text" class="mapping-input" data-code="' + escapeHtml(code) + '" value="' + escapeHtml(mappings[code] || '') + '" placeholder="输入中文名称"></td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>' +
+      '<p style="font-size:12px;color:var(--text-secondary);margin-top:8px">共 ' + codes.length + ' 个商品</p>';
+    container.innerHTML = html;
+  }).catch(function(err) {
+    container.innerHTML = '<p style="color:var(--red);font-size:13px">加载失败: ' + err.message + '</p>';
+  });
+}
+
+function saveMappings() {
+  var inputs = document.querySelectorAll('.mapping-input');
+  var newMappings = {};
+  inputs.forEach(function(inp) {
+    var val = inp.value.trim();
+    if (val) newMappings[inp.dataset.code] = val;
+  });
+  
+  fetch('/api/mappings', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(newMappings)
+  }).then(function(r) { return r.json(); }).then(function(result) {
+    if (result.status === 'ok') {
+      alert('✅ 已保存，所有用户刷新后可见');
+    } else {
+      alert('❌ 保存失败: ' + (result.error || '未知错误'));
+    }
+  }).catch(function(err) {
+    alert('❌ 保存失败: ' + err.message);
+  });
+}
+
+// Check session
+fetch('/api/check-session').then(function(r){return r.json()}).then(function(d){
+  if(!d.valid) window.location.href='/login.html';
+});
+
+function logout() {
+  document.cookie = 'wb_session=; Path=/; Max-Age=0';
+  window.location.href = '/login.html';
+}
+
+renderMappings();
+
+
+// ====== Sidebar ======
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const mainContent = document.getElementById('mainContent');
+  sidebar.classList.toggle('collapsed');
+  mainContent.classList.toggle('sidebar-collapsed');
+  const isCollapsed = sidebar.classList.contains('collapsed');
+  localStorage.setItem('wb_sidebar_expanded', isCollapsed ? 'false' : 'true');
+}
+
+function initSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const mainContent = document.getElementById('mainContent');
+  // 默认已折叠，检查是否需要展开
+  const expanded = localStorage.getItem('wb_sidebar_expanded') === 'true';
+  if (expanded) {
+    sidebar.classList.remove('collapsed');
+    mainContent.classList.remove('sidebar-collapsed');
+  }
+}
+document.addEventListener('DOMContentLoaded', initSidebar);
+</script>
+</div><!-- end main-content -->
+</body>
+</html>
